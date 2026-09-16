@@ -18,6 +18,12 @@ public:
     float GetWindowAlpha() const { return m_windowAlpha; }
     void SetWindowAlpha(float v) { m_windowAlpha = v; }
 
+    float GetWinX() const { return m_winX; }
+    float GetWinY() const { return m_winY; }
+    float GetWinW() const { return m_winW; }
+    float GetWinH() const { return m_winH; }
+    void SetWindowRect(float x, float y, float w, float h) { m_winX=x; m_winY=y; m_winW=w; m_winH=h; }
+
     int GetRemindMinutes() const { return m_remindMinutes; }
     void SetRemindMinutes(int v) { m_remindMinutes = v; }
 
@@ -30,4 +36,5 @@ private:
     bool m_showLocalTime = true;
     int m_remindMinutes = 10;
     float m_windowAlpha = 0.88f;
+    float m_winX = -1, m_winY = -1, m_winW = -1, m_winH = -1;
 };

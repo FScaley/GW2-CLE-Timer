@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 3;
-#define CLE_VERSION_STR "0.5.3"
+static constexpr int VER_BUILD = 4;
+#define CLE_VERSION_STR "0.5.4"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -335,6 +335,9 @@ void AddonUnload() {
     if (g_trackMgr && g_config) {
         g_config->SetTracked(g_trackMgr->GetPairs());
     }
+    if (g_config && g_mainWinSize.x > 0) {
+        g_config->SetWindowRect(g_mainWinPos.x, g_mainWinPos.y, g_mainWinSize.x, g_mainWinSize.y);
+    }
     if (g_config) { g_config->Save(g_configPath); delete g_config; g_config = nullptr; }
     if (g_trackMgr) { delete g_trackMgr; g_trackMgr = nullptr; }
     if (g_timer) { delete g_timer; g_timer = nullptr; }
@@ -385,6 +388,11 @@ void AddonRender() {
     // ========== MAIN TIMER WINDOW ==========
     if (g_showWindow) {
         PushGW2Style(g_config->GetWindowAlpha());
+        // Restore saved position/size
+        if (g_config->GetWinW() > 0 && g_config->GetWinH() > 0) {
+            ImGui::SetNextWindowPos(ImVec2(g_config->GetWinX(), g_config->GetWinY()), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(g_config->GetWinW(), g_config->GetWinH()), ImGuiCond_FirstUseEver);
+        }
         ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
         if (ImGui::Begin("Claymore Law Event Timer v" CLE_VERSION_STR "##CLE", &g_showWindow,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {

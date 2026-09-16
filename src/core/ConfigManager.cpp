@@ -21,6 +21,10 @@ bool ConfigManager::Load(const std::string& path) {
     m_showLocalTime = root.value("show_local_time", true);
     m_windowAlpha = root.value("window_alpha", 0.88f);
     m_remindMinutes = root.value("remind_minutes", 10);
+    m_winX = root.value("win_x", -1.0f);
+    m_winY = root.value("win_y", -1.0f);
+    m_winW = root.value("win_w", -1.0f);
+    m_winH = root.value("win_h", -1.0f);
 
     m_tracked.clear();
     if (root.contains("tracked") && root["tracked"].is_array()) {
@@ -42,6 +46,10 @@ bool ConfigManager::Save(const std::string& path) const {
     root["show_local_time"] = m_showLocalTime;
     root["window_alpha"] = m_windowAlpha;
     root["remind_minutes"] = m_remindMinutes;
+    root["win_x"] = m_winX;
+    root["win_y"] = m_winY;
+    root["win_w"] = m_winW;
+    root["win_h"] = m_winH;
 
     json tracked = json::array();
     for (auto& [k, s] : m_tracked)
