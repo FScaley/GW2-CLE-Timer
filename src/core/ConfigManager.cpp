@@ -20,6 +20,15 @@ bool ConfigManager::Load(const std::string& path) {
 
     m_showLocalTime = root.value("show_local_time", true);
     m_windowAlpha = root.value("window_alpha", 0.88f);
+    m_soundEnabled = root.value("sound_enabled", true);
+
+    m_tracked.clear();
+    if (root.contains("tracked") && root["tracked"].is_array()) {
+        for (auto& entry : root["tracked"]) {
+            if (entry.is_array() && entry.size() == 2)
+                m_tracked.push_back({entry[0].get<std::string>(), entry[1].get<std::string>()});
+        }
+    }
 
     return true;
 }
@@ -31,6 +40,12 @@ bool ConfigManager::Save(const std::string& path) const {
     root["hidden_events"] = hidden;
     root["show_local_time"] = m_showLocalTime;
     root["window_alpha"] = m_windowAlpha;
+    root["sound_enabled"] = m_soundEnabled;
+
+    json tracked = json::array();
+    for (auto& [k, s] : m_tracked)
+        tracked.push_back(json::array({k, s}));
+    root["tracked"] = tracked;
 
     std::ofstream f(path);
     if (!f.is_open()) return false;

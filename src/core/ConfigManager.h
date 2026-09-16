@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 #include <unordered_set>
 
 class ConfigManager {
@@ -17,8 +18,16 @@ public:
     float GetWindowAlpha() const { return m_windowAlpha; }
     void SetWindowAlpha(float v) { m_windowAlpha = v; }
 
+    bool GetSoundEnabled() const { return m_soundEnabled; }
+    void SetSoundEnabled(bool v) { m_soundEnabled = v; }
+
+    const std::vector<std::pair<std::string,std::string>>& GetTracked() const { return m_tracked; }
+    void SetTracked(const std::vector<std::pair<std::string,std::string>>& t) { m_tracked = t; }
+
 private:
     std::unordered_set<std::string> m_hiddenEvents;
+    std::vector<std::pair<std::string,std::string>> m_tracked;
     bool m_showLocalTime = true;
+    bool m_soundEnabled = true;
     float m_windowAlpha = 0.88f;
 };
