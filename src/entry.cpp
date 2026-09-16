@@ -23,8 +23,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 4;
-static constexpr int VER_BUILD = 0;
-#define CLE_VERSION_STR "0.4.0"
+static constexpr int VER_BUILD = 2;
+#define CLE_VERSION_STR "0.4.2"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -314,7 +314,6 @@ void AddonLoad(AddonAPI_t* aApi) {
     APIDefs->QuickAccess_Add(QA_ID, "ICON_CLE", "ICON_CLE", KB_ID, "Claymore Law Event Timer");
 
     APIDefs->GUI_RegisterCloseOnEscape("Claymore Law Event Timer##CLE", &g_showWindow);
-    APIDefs->GUI_RegisterCloseOnEscape("Takip##CLE_TRACK", &g_showTrackPanel);
 
     char fontPath[MAX_PATH];
     GetWindowsDirectoryA(fontPath, MAX_PATH);
@@ -330,7 +329,6 @@ void AddonUnload() {
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->GUI_DeregisterCloseOnEscape("Claymore Law Event Timer##CLE");
-    APIDefs->GUI_DeregisterCloseOnEscape("Takip##CLE_TRACK");
     APIDefs->QuickAccess_Remove(QA_ID);
     APIDefs->InputBinds_Deregister(KB_ID);
     if (g_trackMgr && g_config) {
@@ -407,13 +405,18 @@ void AddonRender() {
             if (ImGui::SmallButton(g_showTrackPanel ? "Takip<<" : "Takip>>"))
                 g_showTrackPanel = !g_showTrackPanel;
 
-            // Timeline child
-            ImGui::BeginChild("##timeline", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+            // Layout: timeline left, track panel right (docked)
+            static constexpr float TRACK_PANEL_W = 200.0f;
+            bool showTrack = g_showTrackPanel && !g_cachedTrackRows.empty();
+            float timelineW = showTrack ? (winW - TRACK_PANEL_W - 6) : winW;
+            if (timelineW < 300) timelineW = 300;
+
+            ImGui::BeginChild("##timeline", ImVec2(timelineW, 0), false, 0);
             dl = ImGui::GetWindowDrawList();
 
             int windowStart = g_nowMin - HALF_WINDOW;
             int windowEnd = g_nowMin + HALF_WINDOW;
-            float barW = winW - LABEL_WIDTH - 8;
+            float barW = timelineW - LABEL_WIDTH - 8;
             if (barW < 100) barW = 100;
 
             ImVec2 cursor = ImGui::GetCursorScreenPos();
@@ -555,74 +558,79 @@ void AddonRender() {
             float nowLineBottom = ImGui::GetCursorScreenPos().y;
             RenderNowLine(dl, nowLinePx, nowLineTop, nowLineBottom);
             ImGui::EndChild();
+
+            // ========== DOCKED TRACK PANEL (right side, inside main window) ==========
+            if (showTrack) {
+                ImGui::SameLine(0, 2);
+
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.04f, 0.05f, 0.07f, 0.70f));
+                ImGui::BeginChild("##trackpanel", ImVec2(TRACK_PANEL_W, 0), true);
+
+                ImGui::TextColored(COL_GOLD, "Takip");
+                ImGui::Separator();
+
+                for (size_t i = 0; i < g_cachedTrackRows.size(); ++i) {
+                    auto& row = g_cachedTrackRows[i];
+                    ImGui::PushID(static_cast<int>(i));
+
+                    ImVec4 nameCol = row.isActive
+                        ? ImVec4(0.3f, 0.9f, 0.3f, 1.0f)
+                        : (row.minutesUntilStart <= 10
+                            ? ImVec4(1.0f, 0.85f, 0.2f, 1.0f)
+                            : ImVec4(0.85f, 0.87f, 0.90f, 1.0f));
+
+                    // Remove button (left)
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.1f, 0.1f, 0.6f));
+                    if (ImGui::SmallButton("X")) {
+                        g_trackMgr->RemoveTrack(row.track->wikiKey, row.track->segmentName);
+                        g_config->SetTracked(g_trackMgr->GetPairs());
+                        g_config->Save(g_configPath);
+                        g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
+                        ImGui::PopStyleColor();
+                        ImGui::PopID();
+                        break;
+                    }
+                    ImGui::PopStyleColor();
+
+                    ImGui::SameLine();
+                    ImGui::TextColored(nameCol, "%s", row.displayName.c_str());
+
+                    // Countdown (right-aligned)
+                    char cdBuf[32];
+                    if (row.isActive) snprintf(cdBuf, sizeof(cdBuf), "AKTIF");
+                    else {
+                        int h = row.minutesUntilStart / 60, m = row.minutesUntilStart % 60;
+                        if (h > 0) snprintf(cdBuf, sizeof(cdBuf), "%ds%02dd", h, m);
+                        else snprintf(cdBuf, sizeof(cdBuf), "%ddk", m);
+                    }
+                    float cdW = ImGui::CalcTextSize(cdBuf).x;
+                    float avail = ImGui::GetContentRegionAvail().x;
+                    ImGui::SameLine(avail - cdW + ImGui::GetCursorPosX());
+                    ImGui::TextColored(nameCol, "%s", cdBuf);
+
+                    // WP on hover
+                    if (ImGui::IsItemHovered() && !row.chatlink.empty()) {
+                        ImGui::BeginTooltip();
+                        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
+                        ImGui::TextColored(COL_DIM, "Tikla: kopyala");
+                        ImGui::EndTooltip();
+                        if (ImGui::IsItemClicked())
+                            ImGui::SetClipboardText(row.chatlink.c_str());
+                    }
+
+                    ImGui::PopID();
+                }
+
+                if (g_cachedTrackRows.empty()) {
+                    ImGui::TextColored(COL_DIM, "Sag tik -> Takip et");
+                }
+
+                ImGui::EndChild();
+                ImGui::PopStyleColor();
+            }
         }
         ImGui::End();
         PopGW2Style();
-    }
-
-    // ========== TRACK PANEL (always renders when visible, even if timer closed) ==========
-    if (g_showTrackPanel && !g_cachedTrackRows.empty()) {
-        ImGuiIO& io = ImGui::GetIO();
-        float panelW = 280;
-        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - panelW - 16, 120), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(panelW, 300), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(220, 80), ImVec2(400, 600));
-
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.07f, 0.09f, g_config->GetWindowAlpha()));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.93f, 0.91f, 0.67f, 0.25f));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-
-        if (ImGui::Begin("Takip##CLE_TRACK", &g_showTrackPanel, ImGuiWindowFlags_NoCollapse)) {
-            for (size_t i = 0; i < g_cachedTrackRows.size(); ++i) {
-                auto& row = g_cachedTrackRows[i];
-                ImGui::PushID(static_cast<int>(i));
-
-                ImVec4 nameCol = row.isActive
-                    ? ImVec4(0.3f, 0.9f, 0.3f, 1.0f)
-                    : (row.minutesUntilStart <= 10
-                        ? ImVec4(1.0f, 0.85f, 0.2f, 1.0f)
-                        : ImVec4(0.85f, 0.87f, 0.90f, 1.0f));
-
-                // Name
-                ImGui::TextColored(nameCol, "%s", row.displayName.c_str());
-
-                // Countdown (right-aligned)
-                char cdBuf[32];
-                if (row.isActive) snprintf(cdBuf, sizeof(cdBuf), "AKTIF");
-                else {
-                    int h = row.minutesUntilStart / 60, m = row.minutesUntilStart % 60;
-                    if (h > 0) snprintf(cdBuf, sizeof(cdBuf), "%ds %02ddk", h, m);
-                    else snprintf(cdBuf, sizeof(cdBuf), "%ddk", m);
-                }
-                float cdW = ImGui::CalcTextSize(cdBuf).x;
-                float btnW = ImGui::CalcTextSize("WP").x + ImGui::CalcTextSize("X").x + 30;
-                ImGui::SameLine(ImGui::GetContentRegionAvail().x - cdW - btnW);
-                ImGui::TextColored(nameCol, "%s", cdBuf);
-
-                if (!row.chatlink.empty()) {
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("WP"))
-                        ImGui::SetClipboardText(row.chatlink.c_str());
-                }
-                ImGui::SameLine();
-                if (ImGui::SmallButton("X")) {
-                    g_trackMgr->RemoveTrack(row.track->wikiKey, row.track->segmentName);
-                    g_config->SetTracked(g_trackMgr->GetPairs());
-                    g_config->Save(g_configPath);
-                    g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
-                    ImGui::PopID();
-                    break;
-                }
-                ImGui::PopID();
-            }
-
-            if (g_cachedTrackRows.empty())
-                ImGui::TextColored(COL_DIM, "Zaman cubugunda sag tik\n-> Takip et");
-        }
-        ImGui::End();
-        ImGui::PopStyleVar(2);
-        ImGui::PopStyleColor(2);
     }
 
     // ========== TOASTS (always visible) ==========
