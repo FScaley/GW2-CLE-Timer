@@ -23,8 +23,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 4;
-static constexpr int VER_BUILD = 2;
-#define CLE_VERSION_STR "0.4.2"
+static constexpr int VER_BUILD = 3;
+#define CLE_VERSION_STR "0.4.3"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -38,7 +38,7 @@ TrackManager* g_trackMgr = nullptr;
 std::string g_configPath;
 std::string g_addonDir;
 std::string g_dataPath;
-bool g_showWindow = true;
+bool g_showWindow = false;
 bool g_showTrackPanel = true;
 ImFont* g_font = nullptr;
 time_t g_lastUpdate = 0;
@@ -313,7 +313,7 @@ void AddonLoad(AddonAPI_t* aApi) {
     APIDefs->Textures_GetOrCreateFromMemory("ICON_CLE", (void*)ICON_CLE_PNG, ICON_CLE_PNG_SIZE);
     APIDefs->QuickAccess_Add(QA_ID, "ICON_CLE", "ICON_CLE", KB_ID, "Claymore Law Event Timer");
 
-    APIDefs->GUI_RegisterCloseOnEscape("Claymore Law Event Timer##CLE", &g_showWindow);
+    APIDefs->GUI_RegisterCloseOnEscape("Claymore Law Event Timer v" CLE_VERSION_STR "##CLE", &g_showWindow);
 
     char fontPath[MAX_PATH];
     GetWindowsDirectoryA(fontPath, MAX_PATH);
@@ -328,7 +328,7 @@ void AddonUnload() {
     g_font = nullptr;
     APIDefs->GUI_Deregister(AddonRender);
     APIDefs->GUI_Deregister(AddonOptions);
-    APIDefs->GUI_DeregisterCloseOnEscape("Claymore Law Event Timer##CLE");
+    APIDefs->GUI_DeregisterCloseOnEscape("Claymore Law Event Timer v" CLE_VERSION_STR "##CLE");
     APIDefs->QuickAccess_Remove(QA_ID);
     APIDefs->InputBinds_Deregister(KB_ID);
     if (g_trackMgr && g_config) {
@@ -380,7 +380,7 @@ void AddonRender() {
     if (g_showWindow) {
         PushGW2Style(g_config->GetWindowAlpha());
         ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
-        if (ImGui::Begin("Claymore Law Event Timer##CLE", &g_showWindow,
+        if (ImGui::Begin("Claymore Law Event Timer v" CLE_VERSION_STR "##CLE", &g_showWindow,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
