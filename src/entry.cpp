@@ -19,8 +19,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 2;
-static constexpr int VER_BUILD = 3;
-#define CLE_VERSION_STR "0.2.3"
+static constexpr int VER_BUILD = 4;
+#define CLE_VERSION_STR "0.2.4"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -401,7 +401,6 @@ void AddonRender() {
                     ImVec2(barW, ROW_HEIGHT));
 
                 if (ImGui::IsItemHovered()) {
-                    // Find which segment the mouse is over
                     float mouseX = ImGui::GetMousePos().x;
                     float ppm = barW / (float)(windowEnd - windowStart);
                     int mouseMin = windowStart + (int)((mouseX - barX) / ppm);
@@ -411,19 +410,42 @@ void AddonRender() {
                     if (pi.segment) {
                         bool isFiltered = ev->segmentFilter && !pi.segment->isGap
                             && pi.segment->name != ev->segmentFilter;
+
+                        // Determine if hovered segment is past, present, or future
+                        int segStartMin = mouseMin - pi.elapsedInPhase;
+                        int segEndMin = segStartMin + pi.phaseDuration;
+                        bool isPast = segEndMin <= g_nowMin;
+                        bool isCurrent = segStartMin <= g_nowMin && segEndMin > g_nowMin;
+                        bool isFuture = segStartMin > g_nowMin;
+
                         ImGui::BeginTooltip();
                         if (!pi.segment->isGap && !isFiltered) {
-                            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s",
-                                pi.segment->name.c_str());
-                            if (pi.elapsedInPhase > 0) {
-                                ImGui::Text("%d dk icinde bitiyor", pi.minutesUntilEnd);
+                            if (isCurrent) {
+                                ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s",
+                                    pi.segment->name.c_str());
+                                ImGui::Text("%d dk icinde bitiyor", segEndMin - g_nowMin);
+                            } else if (isFuture) {
+                                ImGui::TextColored(ImVec4(0.9f, 0.85f, 0.2f, 1.0f), "%s",
+                                    pi.segment->name.c_str());
+                                ImGui::Text("%d dk sonra basliyor", segStartMin - g_nowMin);
                             } else {
-                                ImGui::Text("Basliyor");
+                                ImGui::TextColored(COL_DIM, "%s", pi.segment->name.c_str());
+                                ImGui::Text("Bitti");
                             }
                         } else {
-                            ImGui::TextColored(COL_DIM, "Bos");
+                            if (isCurrent) {
+                                ImGui::TextColored(COL_DIM, "Bos alan");
+                                // Find next non-gap segment
+                                auto nextPi = g_timer->GetPhaseAt(*ev, ((segEndMin) % 1440 + 1440) % 1440);
+                                if (nextPi.segment && !nextPi.segment->isGap) {
+                                    int minsToNext = segEndMin - g_nowMin;
+                                    ImGui::Text("%s - %d dk sonra", nextPi.segment->name.c_str(), minsToNext);
+                                }
+                            } else {
+                                ImGui::TextColored(COL_DIM, "Bos alan");
+                            }
                         }
-                        if (!pi.segment->chatlink.empty() && !isFiltered) {
+                        if (!pi.segment->chatlink.empty() && !isFiltered && !isPast) {
                             ImGui::Spacing();
                             ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s",
                                 pi.segment->chatlink.c_str());
