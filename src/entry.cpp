@@ -19,8 +19,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 2;
-static constexpr int VER_BUILD = 1;
-#define CLE_VERSION_STR "0.2.1"
+static constexpr int VER_BUILD = 3;
+#define CLE_VERSION_STR "0.2.3"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -43,7 +43,7 @@ static const char* KB_ID = "KB_CLE_TOGGLE";
 
 // Timeline constants
 static constexpr float LABEL_WIDTH = 130.0f;
-static constexpr float ROW_HEIGHT = 20.0f;
+static constexpr float ROW_HEIGHT = 22.0f;
 static constexpr float TIME_HEADER_H = 18.0f;
 static constexpr float GROUP_HEADER_H = 22.0f;
 static constexpr int HALF_WINDOW = 60;
@@ -115,8 +115,7 @@ static bool IsLightColor(const SegColor& c) {
     return lum > 160;
 }
 
-static void DrawTextWithShadow(ImDrawList* dl, ImVec2 pos, const char* text, ImU32 textCol) {
-    dl->AddText(ImVec2(pos.x + 1, pos.y + 1), IM_COL32(0, 0, 0, 180), text);
+static void DrawBarText(ImDrawList* dl, ImVec2 pos, float maxW, const char* text, ImU32 textCol) {
     dl->AddText(pos, textCol, text);
 }
 
@@ -168,45 +167,16 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
 
         float segW = blk.endPx - blk.startPx;
         float ty = y0 + (barH - ImGui::GetTextLineHeight()) * 0.5f;
-        bool crossesNow = (blk.startMin <= nowMin && blk.endMin > nowMin);
 
+        // Segment name only (no countdown on bar -- countdown is in tooltip)
         if (!isGapOrFiltered && !blk.seg->name.empty()) {
             ImU32 textCol = IsLightColor(blk.seg->color)
-                ? IM_COL32(20, 20, 20, 240) : IM_COL32(255, 255, 255, 230);
+                ? IM_COL32(10, 10, 10, 255) : IM_COL32(255, 255, 255, 245);
 
-            if (crossesNow) {
-                int remaining = blk.endMin - nowMin;
-                char combined[128];
-                snprintf(combined, sizeof(combined), "%s  %ddk", blk.seg->name.c_str(), remaining);
-                ImVec2 combSize = ImGui::CalcTextSize(combined);
-                if (combSize.x < segW - 6) {
-                    float tx = blk.startPx + (segW - combSize.x) * 0.5f;
-                    DrawTextWithShadow(dl, ImVec2(tx, ty), combined, textCol);
-                } else {
-                    ImVec2 nameSize = ImGui::CalcTextSize(blk.seg->name.c_str());
-                    if (nameSize.x < segW - 6) {
-                        float tx = blk.startPx + (segW - nameSize.x) * 0.5f;
-                        DrawTextWithShadow(dl, ImVec2(tx, ty), blk.seg->name.c_str(), textCol);
-                    }
-                }
-            } else {
-                ImVec2 nameSize = ImGui::CalcTextSize(blk.seg->name.c_str());
-                if (nameSize.x < segW - 6) {
-                    float tx = blk.startPx + (segW - nameSize.x) * 0.5f;
-                    DrawTextWithShadow(dl, ImVec2(tx, ty), blk.seg->name.c_str(), textCol);
-                }
-            }
-        }
-
-        // "Xdk sonra" only in the gap that crosses now
-        if (isGapOrFiltered && crossesNow) {
-            int remaining = blk.endMin - nowMin;
-            char cdBuf[24];
-            snprintf(cdBuf, sizeof(cdBuf), "%ddk sonra", remaining);
-            ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
-            float cdX = nowPx + 4;
-            if (cdX + cdSize.x < blk.endPx - 2) {
-                DrawTextWithShadow(dl, ImVec2(cdX, ty), cdBuf, IM_COL32(170, 175, 185, 200));
+            ImVec2 nameSize = ImGui::CalcTextSize(blk.seg->name.c_str());
+            if (nameSize.x < segW - 6) {
+                float tx = blk.startPx + (segW - nameSize.x) * 0.5f;
+                DrawBarText(dl, ImVec2(tx, ty), segW, blk.seg->name.c_str(), textCol);
             }
         }
     }
@@ -299,7 +269,7 @@ void AddonLoad(AddonAPI_t* aApi) {
     char fontPath[MAX_PATH];
     GetWindowsDirectoryA(fontPath, MAX_PATH);
     strcat_s(fontPath, "\\Fonts\\segoeui.ttf");
-    APIDefs->Fonts_AddFromFile("FONT_CLE", 13.0f, fontPath, OnFontReceived, nullptr);
+    APIDefs->Fonts_AddFromFile("FONT_CLE", 14.0f, fontPath, OnFontReceived, nullptr);
 
     APIDefs->Log(LOGL_INFO, "CLE", "Claymore Law Event Timer v" CLE_VERSION_STR " loaded.");
 }
@@ -431,25 +401,39 @@ void AddonRender() {
                     ImVec2(barW, ROW_HEIGHT));
 
                 if (ImGui::IsItemHovered()) {
-                    auto pi = g_timer->GetPhaseAt(*ev, g_nowMin);
+                    // Find which segment the mouse is over
+                    float mouseX = ImGui::GetMousePos().x;
+                    float ppm = barW / (float)(windowEnd - windowStart);
+                    int mouseMin = windowStart + (int)((mouseX - barX) / ppm);
+                    int absMouseMin = ((mouseMin % 1440) + 1440) % 1440;
+                    auto pi = g_timer->GetPhaseAt(*ev, absMouseMin);
+
                     if (pi.segment) {
+                        bool isFiltered = ev->segmentFilter && !pi.segment->isGap
+                            && pi.segment->name != ev->segmentFilter;
                         ImGui::BeginTooltip();
-                        if (!pi.segment->isGap) {
-                            ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.3f, 1.0f), "%s",
+                        if (!pi.segment->isGap && !isFiltered) {
+                            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s",
                                 pi.segment->name.c_str());
-                            ImGui::Text("%dd kaldi", pi.minutesUntilEnd);
+                            if (pi.elapsedInPhase > 0) {
+                                ImGui::Text("%d dk icinde bitiyor", pi.minutesUntilEnd);
+                            } else {
+                                ImGui::Text("Basliyor");
+                            }
                         } else {
-                            ImGui::TextColored(COL_DIM, "Bekleniyor");
+                            ImGui::TextColored(COL_DIM, "Bos");
                         }
-                        if (!pi.segment->chatlink.empty()) {
+                        if (!pi.segment->chatlink.empty() && !isFiltered) {
+                            ImGui::Spacing();
                             ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s",
                                 pi.segment->chatlink.c_str());
-                            ImGui::TextColored(COL_DIM, "Tikla: kopyala");
+                            ImGui::TextColored(COL_DIM, "Tikla: panoya kopyala");
                         }
                         ImGui::EndTooltip();
+
+                        if (ImGui::IsItemClicked() && !pi.segment->chatlink.empty() && !isFiltered)
+                            ImGui::SetClipboardText(pi.segment->chatlink.c_str());
                     }
-                    if (ImGui::IsItemClicked() && pi.segment && !pi.segment->chatlink.empty())
-                        ImGui::SetClipboardText(pi.segment->chatlink.c_str());
                 }
 
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x, rowY + ROW_HEIGHT + 1));
