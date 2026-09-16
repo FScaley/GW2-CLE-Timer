@@ -252,7 +252,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef() {
     AddonDef.Version.Minor = VER_MINOR;
     AddonDef.Version.Build = VER_BUILD;
     AddonDef.Version.Revision = 0;
-    AddonDef.Author = "Onur";
+    AddonDef.Author = "Scaley.9708 from ClaymoreLaw";
     AddonDef.Description = "GW2 Event Timer - Wiki tarzi timeline gorunumu";
     AddonDef.Load = AddonLoad;
     AddonDef.Unload = AddonUnload;
