@@ -50,6 +50,8 @@ struct EventDef {
     bool defaultVisible;
     int displayOrder;
     const char* segmentFilter;
+    const char* highlightSegments;
+    uint32_t mapId;
     std::vector<Segment> segments;
     std::vector<SeqEntry> partial;
     std::vector<SeqEntry> pattern;
@@ -86,6 +88,7 @@ public:
     const std::vector<EventDef>& GetAllEvents() const { return m_events; }
 
     int MinutesUntilSegment(const EventDef& ev, int segId, int nowMin) const;
+    static bool IsHighlightSegment(const EventDef& ev, const Segment& seg);
 
     struct PhaseInfo {
         const Segment* segment = nullptr;
@@ -114,6 +117,8 @@ private:
         int displayOrder;
         const char* segmentFilter;
         const char* displayNameOverride;
+        const char* highlightSegments;
+        uint32_t mapId;
     };
     static const EventMapping s_mappings[];
     static const int s_mappingCount;

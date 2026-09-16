@@ -8,60 +8,61 @@
 using json = nlohmann::json;
 
 const TimerEngine::EventMapping TimerEngine::s_mappings[] = {
+    //                                                                                              segFilter       displayOverride              highlight                                          mapId
     // Core Tyria
-    {"core-wb",     Expansion::Core,                EventCategory::WorldBoss,       true,  0, nullptr, nullptr},
-    {"core-hwb",    Expansion::Core,                EventCategory::WorldBoss,       true,  1, nullptr, "Hard World Bosses"},
-    {"core-la",     Expansion::Core,                EventCategory::LeyLineAnomaly,  true,  3, nullptr, nullptr},
-    {"core-in",     Expansion::Core,                EventCategory::MetaEvent,       false, 4, nullptr, nullptr},
-    {"lws2-dt",     Expansion::Core,                EventCategory::MetaEvent,       true,  2, nullptr, "Dry Top (LW2)"},
+    {"core-wb",     Expansion::Core,                EventCategory::WorldBoss,       true,  0, nullptr,        nullptr,                     nullptr,                                               0},
+    {"core-hwb",    Expansion::Core,                EventCategory::WorldBoss,       true,  1, nullptr,        "Hard World Bosses",         nullptr,                                               0},
+    {"core-la",     Expansion::Core,                EventCategory::LeyLineAnomaly,  true,  3, nullptr,        nullptr,                     nullptr,                                               0},
+    {"core-in",     Expansion::Core,                EventCategory::MetaEvent,       false, 4, nullptr,        nullptr,                     nullptr,                                               0},
+    {"lws2-dt",     Expansion::Core,                EventCategory::MetaEvent,       true,  2, nullptr,        "Dry Top (LW2)",             "Sandstorm",                                         988},
 
     // Heart of Thorns + LW3
-    {"hot-vb",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"hot-ab",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
-    {"hot-td",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
-    {"hot-ds",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  3, nullptr, nullptr},
-    {"lws3-ld",     Expansion::HeartOfThorns,       EventCategory::MetaEvent,       false, 4, nullptr, "Lake Doric (LW3)"},
+    {"hot-vb",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Night Bosses",                                     1052},
+    {"hot-ab",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  1, nullptr,        nullptr,                     "Octovine",                                         1043},
+    {"hot-td",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  2, nullptr,        nullptr,                     "Chak Gerent",                                      1045},
+    {"hot-ds",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  3, nullptr,        nullptr,                     nullptr,                                            1041},
+    {"lws3-ld",     Expansion::HeartOfThorns,       EventCategory::MetaEvent,       false, 4, nullptr,        "Lake Doric (LW3)",          nullptr,                                            1185},
 
     // Path of Fire + LW4
-    {"pof-co",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"pof-dh",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 1, nullptr, nullptr},
-    {"pof-er",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 2, nullptr, nullptr},
-    {"pof-td",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  3, nullptr, nullptr},
-    {"pof-dv",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  4, nullptr, nullptr},
-    {"lws4-di",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  5, nullptr, "Domain of Istan (LW4)"},
-    {"lws4-jb",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  6, nullptr, "Jahai Bluffs (LW4)"},
-    {"lws4-tp",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  7, nullptr, "Thunderhead Peaks (LW4)"},
+    {"pof-co",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Pinata/Reset",                                     1210},
+    {"pof-dh",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 1, nullptr,        nullptr,                     nullptr,                                            1211},
+    {"pof-er",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 2, nullptr,        nullptr,                     nullptr,                                            1228},
+    {"pof-td",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  3, nullptr,        nullptr,                     nullptr,                                            1226},
+    {"pof-dv",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  4, nullptr,        nullptr,                     "Serpents' Ire",                                    1248},
+    {"lws4-di",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  5, nullptr,        "Domain of Istan (LW4)",     "Palawadan",                                        1263},
+    {"lws4-jb",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  6, nullptr,        "Jahai Bluffs (LW4)",        "Death-Branded Shatterer",                          1301},
+    {"lws4-tp",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  7, nullptr,        "Thunderhead Peaks (LW4)",   "Thunderhead Keep",                                 1310},
 
     // Icebrood Saga
-    {"lws5-bm",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"lws5-gv",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       false, 1, nullptr, nullptr},
+    {"lws5-bm",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Drakkar and Spirits of the Wild|Icebrood Champions", 1343},
+    {"lws5-gv",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       false, 1, nullptr,        nullptr,                     nullptr,                                            1330},
 
     // End of Dragons
-    {"eod-sp",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"eod-nkc",     Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
-    {"eod-ew",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
-    {"eod-de",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  3, nullptr, nullptr},
+    {"eod-sp",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Aetherblade Assault",                              1442},
+    {"eod-nkc",     Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  1, nullptr,        nullptr,                     "Kaineng Blackout",                                 1438},
+    {"eod-ew",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  2, nullptr,        nullptr,                     "Gang War|Aspenwood",                               1452},
+    {"eod-de",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  3, nullptr,        nullptr,                     "The Battle for the Jade Sea",                      1422},
 
     // Secrets of the Obscure
-    {"soto-sa",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"soto-wt",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       false, 1, nullptr, "Wizard's Tower"},
-    {"soto-am",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
+    {"soto-sa",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Unlocking the Wizard's Tower",                     1510},
+    {"soto-wt",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       false, 1, nullptr,        "Wizard's Tower",            nullptr,                                            1509},
+    {"soto-am",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  2, nullptr,        nullptr,                     "Defense of Amnytas",                               1517},
 
     // Janthir Wilds
-    {"jw-js",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"jw-bn",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
+    {"jw-js",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Of Mists and Monsters",                            1554},
+    {"jw-bn",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  1, nullptr,        nullptr,                     "A Titanic Voyage",                                 1574},
 
     // Visions of Eternity
-    {"voe-ss",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
-    {"voe-sw",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
-    {"voe-eg",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
+    {"voe-ss",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  0, nullptr,        nullptr,                     "Hammerhart Rumble!",                               1595},
+    {"voe-sw",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  1, nullptr,        nullptr,                     "Secrets of the Weald",                             1593},
+    {"voe-eg",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  2, nullptr,        nullptr,                     "Shackles of the Ancients",                         1622},
 
-    // Convergence -- split by segment into correct expansions
-    {"public-con",  Expansion::SecretsOfTheObscure, EventCategory::Convergence,     true,  3, "Outer Nayos", "Convergence: Outer Nayos"},
-    {"public-con",  Expansion::JanthirWilds,        EventCategory::Convergence,     true,  2, "Mount Balrior", "Convergence: Mt. Balrior"},
+    // Convergence -- split by segment
+    {"public-con",  Expansion::SecretsOfTheObscure, EventCategory::Convergence,     true,  3, "Outer Nayos",  "Convergence: Outer Nayos",  nullptr,                                            1526},
+    {"public-con",  Expansion::JanthirWilds,        EventCategory::Convergence,     true,  2, "Mount Balrior","Convergence: Mt. Balrior",  nullptr,                                            1564},
 
-    // Dragonstorm only (not Marionette/BoLA/ToN)
-    {"public-eotn", Expansion::IcebroodSaga,        EventCategory::Dragonstorm,     true,  2, "Dragonstorm", nullptr},
+    // Dragonstorm
+    {"public-eotn", Expansion::IcebroodSaga,        EventCategory::Dragonstorm,     true,  2, "Dragonstorm",  nullptr,                     nullptr,                                            1370},
 };
 const int TimerEngine::s_mappingCount = sizeof(s_mappings) / sizeof(s_mappings[0]);
 
@@ -108,6 +109,8 @@ bool TimerEngine::ParseJson(const std::string& jsonStr) {
         def.name = ev.value("name", map.wikiKey);
         def.displayName = map.displayNameOverride ? map.displayNameOverride : def.name;
         def.expansion = map.expansion;
+        def.highlightSegments = map.highlightSegments;
+        def.mapId = map.mapId;
         def.category = map.category;
         def.defaultVisible = map.defaultVisible;
         def.displayOrder = map.displayOrder;
@@ -231,6 +234,23 @@ int TimerEngine::MinutesUntilSegment(const EventDef& ev, int segId, int nowMin) 
             return offset;
     }
     return 9999;
+}
+
+bool TimerEngine::IsHighlightSegment(const EventDef& ev, const Segment& seg) {
+    if (!ev.highlightSegments) return true;
+    if (seg.isGap) return false;
+    std::string haystack = ev.highlightSegments;
+    std::string needle = seg.name;
+    size_t pos = 0;
+    while (pos < haystack.size()) {
+        size_t pipe = haystack.find('|', pos);
+        std::string token = (pipe == std::string::npos)
+            ? haystack.substr(pos) : haystack.substr(pos, pipe - pos);
+        if (token == needle) return true;
+        if (pipe == std::string::npos) break;
+        pos = pipe + 1;
+    }
+    return false;
 }
 
 static std::string FormatCountdown(int totalMinutes) {

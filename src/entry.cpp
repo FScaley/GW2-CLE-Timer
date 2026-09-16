@@ -18,9 +18,9 @@ void AddonRender();
 void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
-static constexpr int VER_MINOR = 2;
-static constexpr int VER_BUILD = 5;
-#define CLE_VERSION_STR "0.2.5"
+static constexpr int VER_MINOR = 3;
+static constexpr int VER_BUILD = 0;
+#define CLE_VERSION_STR "0.3.0"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -37,6 +37,8 @@ bool g_showWindow = true;
 ImFont* g_font = nullptr;
 time_t g_lastUpdate = 0;
 int g_nowMin = 0;
+uint32_t g_currentMapId = 0;
+uint32_t g_lastScrollMapId = 0;
 
 static const char* QA_ID = "QA_CLE_TIMER";
 static const char* KB_ID = "KB_CLE_TOGGLE";
@@ -162,16 +164,34 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
 
     for (auto& blk : blocks) {
         bool isGapOrFiltered = blk.seg->isGap || blk.isFiltered;
-        ImU32 col = isGapOrFiltered ? GapColor() : SegColorToImU32(blk.seg->color);
+        bool isHighlight = !isGapOrFiltered && TimerEngine::IsHighlightSegment(ev, *blk.seg);
+
+        ImU32 col;
+        if (isGapOrFiltered) {
+            col = GapColor();
+        } else if (isHighlight) {
+            col = SegColorToImU32(blk.seg->color, 0.90f);
+        } else {
+            // Non-highlight active segment: muted (blend toward gap)
+            col = IM_COL32(
+                (blk.seg->color.r + 50) / 3,
+                (blk.seg->color.g + 55) / 3,
+                (blk.seg->color.b + 65) / 3,
+                160);
+        }
         dl->AddRectFilled(ImVec2(blk.startPx, y0 + 1), ImVec2(blk.endPx, y0 + barH - 1), col);
 
         float segW = blk.endPx - blk.startPx;
         float ty = y0 + (barH - ImGui::GetTextLineHeight()) * 0.5f;
 
-        // Segment name only (no countdown on bar -- countdown is in tooltip)
         if (!isGapOrFiltered && !blk.seg->name.empty()) {
-            ImU32 textCol = IsLightColor(blk.seg->color)
-                ? IM_COL32(10, 10, 10, 255) : IM_COL32(255, 255, 255, 245);
+            ImU32 textCol;
+            if (isHighlight) {
+                textCol = IsLightColor(blk.seg->color)
+                    ? IM_COL32(10, 10, 10, 255) : IM_COL32(255, 255, 255, 245);
+            } else {
+                textCol = IM_COL32(180, 185, 195, 180);
+            }
 
             ImVec2 nameSize = ImGui::CalcTextSize(blk.seg->name.c_str());
             if (nameSize.x < segW - 6) {
@@ -299,6 +319,7 @@ void AddonRender() {
 #endif
         g_nowMin = utcTm.tm_hour * 60 + utcTm.tm_min;
         g_timer->Update(now);
+        if (MumbleLink) g_currentMapId = MumbleLink->Context.MapID;
     }
 
     ImFont* f = g_font;
@@ -395,6 +416,18 @@ void AddonRender() {
 
                 dl->AddText(ImVec2(labelX + 4, rowY + (ROW_HEIGHT - labelSize.y) * 0.5f),
                            IM_COL32(200, 210, 220, 230), label.c_str());
+
+                // "You are here" gold border
+                bool isCurrentMap = ev->mapId != 0 && ev->mapId == g_currentMapId;
+                if (isCurrentMap) {
+                    dl->AddRect(ImVec2(labelX, rowY - 1), ImVec2(barX + barW, rowY + ROW_HEIGHT + 1),
+                               IM_COL32(238, 232, 170, 180), 0, 0, 2.0f);
+                    // Auto-scroll once on map change
+                    if (g_currentMapId != g_lastScrollMapId) {
+                        ImGui::SetScrollHereY(0.3f);
+                        g_lastScrollMapId = g_currentMapId;
+                    }
+                }
 
                 // Timeline bar
                 RenderTimelineBar(dl, *ev, *g_timer, barX, rowY, barW, ROW_HEIGHT,
