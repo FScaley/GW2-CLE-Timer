@@ -44,6 +44,7 @@ struct SeqEntry {
 struct EventDef {
     std::string wikiKey;
     std::string name;
+    std::string displayName;
     Expansion expansion;
     EventCategory category;
     bool defaultVisible;
@@ -112,6 +113,7 @@ private:
         bool defaultVisible;
         int displayOrder;
         const char* segmentFilter;
+        const char* displayNameOverride;
     };
     static const EventMapping s_mappings[];
     static const int s_mappingCount;

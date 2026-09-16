@@ -9,58 +9,59 @@ using json = nlohmann::json;
 
 const TimerEngine::EventMapping TimerEngine::s_mappings[] = {
     // Core Tyria
-    {"core-wb",     Expansion::Core,                EventCategory::WorldBoss,       true,  0, nullptr},
-    {"core-hwb",    Expansion::Core,                EventCategory::WorldBoss,       true,  1, nullptr},
-    {"core-la",     Expansion::Core,                EventCategory::LeyLineAnomaly,  true,  3, nullptr},
-    {"core-in",     Expansion::Core,                EventCategory::MetaEvent,       false, 4, nullptr},
-    {"lws2-dt",     Expansion::Core,                EventCategory::MetaEvent,       true,  2, nullptr},
+    {"core-wb",     Expansion::Core,                EventCategory::WorldBoss,       true,  0, nullptr, nullptr},
+    {"core-hwb",    Expansion::Core,                EventCategory::WorldBoss,       true,  1, nullptr, "Hard World Bosses"},
+    {"core-la",     Expansion::Core,                EventCategory::LeyLineAnomaly,  true,  3, nullptr, nullptr},
+    {"core-in",     Expansion::Core,                EventCategory::MetaEvent,       false, 4, nullptr, nullptr},
+    {"lws2-dt",     Expansion::Core,                EventCategory::MetaEvent,       true,  2, nullptr, "Dry Top (LW2)"},
 
     // Heart of Thorns + LW3
-    {"hot-vb",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  0, nullptr},
-    {"hot-ab",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  1, nullptr},
-    {"hot-td",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  2, nullptr},
-    {"hot-ds",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  3, nullptr},
-    {"lws3-ld",     Expansion::HeartOfThorns,       EventCategory::MetaEvent,       false, 4, nullptr},
+    {"hot-vb",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"hot-ab",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
+    {"hot-td",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
+    {"hot-ds",      Expansion::HeartOfThorns,       EventCategory::MetaEvent,       true,  3, nullptr, nullptr},
+    {"lws3-ld",     Expansion::HeartOfThorns,       EventCategory::MetaEvent,       false, 4, nullptr, "Lake Doric (LW3)"},
 
     // Path of Fire + LW4
-    {"pof-co",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  0, nullptr},
-    {"pof-dh",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 1, nullptr},
-    {"pof-er",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 2, nullptr},
-    {"pof-td",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  3, nullptr},
-    {"pof-dv",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  4, nullptr},
-    {"lws4-di",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  5, nullptr},
-    {"lws4-jb",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  6, nullptr},
-    {"lws4-tp",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  7, nullptr},
+    {"pof-co",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"pof-dh",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 1, nullptr, nullptr},
+    {"pof-er",      Expansion::PathOfFire,          EventCategory::MetaEvent,       false, 2, nullptr, nullptr},
+    {"pof-td",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  3, nullptr, nullptr},
+    {"pof-dv",      Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  4, nullptr, nullptr},
+    {"lws4-di",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  5, nullptr, "Domain of Istan (LW4)"},
+    {"lws4-jb",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  6, nullptr, "Jahai Bluffs (LW4)"},
+    {"lws4-tp",     Expansion::PathOfFire,          EventCategory::MetaEvent,       true,  7, nullptr, "Thunderhead Peaks (LW4)"},
 
     // Icebrood Saga
-    {"lws5-bm",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       true,  0, nullptr},
-    {"lws5-gv",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       false, 1, nullptr},
+    {"lws5-bm",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"lws5-gv",     Expansion::IcebroodSaga,        EventCategory::MetaEvent,       false, 1, nullptr, nullptr},
 
     // End of Dragons
-    {"eod-sp",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  0, nullptr},
-    {"eod-nkc",     Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  1, nullptr},
-    {"eod-ew",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  2, nullptr},
-    {"eod-de",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  3, nullptr},
+    {"eod-sp",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"eod-nkc",     Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
+    {"eod-ew",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
+    {"eod-de",      Expansion::EndOfDragons,        EventCategory::MetaEvent,       true,  3, nullptr, nullptr},
 
     // Secrets of the Obscure
-    {"soto-sa",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  0, nullptr},
-    {"soto-am",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  1, nullptr},
+    {"soto-sa",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"soto-wt",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       false, 1, nullptr, "Wizard's Tower"},
+    {"soto-am",     Expansion::SecretsOfTheObscure, EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
 
     // Janthir Wilds
-    {"jw-js",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  0, nullptr},
-    {"jw-bn",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  1, nullptr},
+    {"jw-js",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"jw-bn",       Expansion::JanthirWilds,        EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
 
     // Visions of Eternity
-    {"voe-ss",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  0, nullptr},
-    {"voe-sw",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  1, nullptr},
-    {"voe-eg",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  2, nullptr},
+    {"voe-ss",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  0, nullptr, nullptr},
+    {"voe-sw",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  1, nullptr, nullptr},
+    {"voe-eg",      Expansion::VisionsOfEternity,   EventCategory::MetaEvent,       true,  2, nullptr, nullptr},
 
     // Convergence -- split by segment into correct expansions
-    {"public-con",  Expansion::SecretsOfTheObscure, EventCategory::Convergence,     true,  2, "Outer Nayos"},
-    {"public-con",  Expansion::JanthirWilds,        EventCategory::Convergence,     true,  2, "Mount Balrior"},
+    {"public-con",  Expansion::SecretsOfTheObscure, EventCategory::Convergence,     true,  3, "Outer Nayos", "Convergence: Outer Nayos"},
+    {"public-con",  Expansion::JanthirWilds,        EventCategory::Convergence,     true,  2, "Mount Balrior", "Convergence: Mt. Balrior"},
 
     // Dragonstorm only (not Marionette/BoLA/ToN)
-    {"public-eotn", Expansion::IcebroodSaga,        EventCategory::Dragonstorm,     true,  2, "Dragonstorm"},
+    {"public-eotn", Expansion::IcebroodSaga,        EventCategory::Dragonstorm,     true,  2, "Dragonstorm", nullptr},
 };
 const int TimerEngine::s_mappingCount = sizeof(s_mappings) / sizeof(s_mappings[0]);
 
@@ -105,6 +106,7 @@ bool TimerEngine::ParseJson(const std::string& jsonStr) {
         EventDef def;
         def.wikiKey = map.wikiKey;
         def.name = ev.value("name", map.wikiKey);
+        def.displayName = map.displayNameOverride ? map.displayNameOverride : def.name;
         def.expansion = map.expansion;
         def.category = map.category;
         def.defaultVisible = map.defaultVisible;

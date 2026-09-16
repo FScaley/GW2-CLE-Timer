@@ -19,8 +19,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 2;
-static constexpr int VER_BUILD = 0;
-#define CLE_VERSION_STR "0.2.0"
+static constexpr int VER_BUILD = 1;
+#define CLE_VERSION_STR "0.2.1"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -110,17 +110,33 @@ static void RenderTimeHeader(ImDrawList* dl, float x0, float y0, float barW,
     }
 }
 
+static bool IsLightColor(const SegColor& c) {
+    float lum = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+    return lum > 160;
+}
+
+static void DrawTextWithShadow(ImDrawList* dl, ImVec2 pos, const char* text, ImU32 textCol) {
+    dl->AddText(ImVec2(pos.x + 1, pos.y + 1), IM_COL32(0, 0, 0, 180), text);
+    dl->AddText(pos, textCol, text);
+}
+
 static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEngine& engine,
                                float x0, float y0, float barW, float barH,
                                int windowStart, int windowEnd, int nowMin) {
     float ppm = barW / (float)(windowEnd - windowStart);
 
-    // Background
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + barW, y0 + barH), IM_COL32(25, 30, 40, 200));
 
-    // Draw segments
+    struct SegBlock {
+        float startPx, endPx;
+        int startMin, endMin;
+        const Segment* seg;
+    };
+    std::vector<SegBlock> blocks;
+
     int prevSegId = -999;
     float segStartPx = x0;
+    int segStartMin = windowStart;
     const Segment* prevSeg = nullptr;
 
     for (int m = windowStart; m <= windowEnd + 1; ++m) {
@@ -128,44 +144,83 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
         auto pi = engine.GetPhaseAt(ev, absM);
         int curSegId = pi.segment ? pi.segment->id : -1;
 
-        bool flush = (curSegId != prevSegId) || (m == windowEnd + 1);
-        if (flush && prevSeg && m > windowStart) {
-            float segEndPx = x0 + (m - windowStart) * ppm;
-
-            ImU32 col = prevSeg->isGap ? GapColor() : SegColorToImU32(prevSeg->color);
-            dl->AddRectFilled(ImVec2(segStartPx, y0 + 1), ImVec2(segEndPx, y0 + barH - 1), col);
-
-            // Text label if enough space
-            if (!prevSeg->isGap && !prevSeg->name.empty()) {
-                float segW = segEndPx - segStartPx;
-                ImVec2 textSize = ImGui::CalcTextSize(prevSeg->name.c_str());
-                if (textSize.x < segW - 4) {
-                    float tx = segStartPx + (segW - textSize.x) * 0.5f;
-                    float ty = y0 + (barH - textSize.y) * 0.5f;
-                    dl->AddText(ImVec2(tx, ty), IM_COL32(255, 255, 255, 230), prevSeg->name.c_str());
-                } else if (segW > 20) {
-                    // Abbreviated - first 3 chars
-                    std::string abbr = prevSeg->name.substr(0, std::min((size_t)4, prevSeg->name.size()));
-                    ImVec2 abbrSize = ImGui::CalcTextSize(abbr.c_str());
-                    if (abbrSize.x < segW - 2) {
-                        float tx = segStartPx + 2;
-                        float ty = y0 + (barH - abbrSize.y) * 0.5f;
-                        dl->AddText(ImVec2(tx, ty), IM_COL32(255, 255, 255, 180), abbr.c_str());
-                    }
-                }
+        if ((curSegId != prevSegId) || (m == windowEnd + 1)) {
+            if (prevSeg && m > windowStart) {
+                float segEndPx = x0 + (m - windowStart) * ppm;
+                blocks.push_back({segStartPx, segEndPx, segStartMin, m, prevSeg});
+                segStartPx = segEndPx;
+                segStartMin = m;
             }
-
-            segStartPx = x0 + (m - windowStart) * ppm;
-        }
-
-        if (curSegId != prevSegId) {
             prevSegId = curSegId;
             prevSeg = pi.segment;
-            segStartPx = x0 + (m - windowStart) * ppm;
+            segStartPx = x0 + (std::max(m, windowStart) - windowStart) * ppm;
+            segStartMin = m;
         }
     }
 
-    // Border
+    // Draw blocks
+    for (auto& blk : blocks) {
+        ImU32 col = blk.seg->isGap ? GapColor() : SegColorToImU32(blk.seg->color);
+        dl->AddRectFilled(ImVec2(blk.startPx, y0 + 1), ImVec2(blk.endPx, y0 + barH - 1), col);
+
+        float segW = blk.endPx - blk.startPx;
+        float ty = y0 + (barH - ImGui::GetTextLineHeight()) * 0.5f;
+
+        if (!blk.seg->isGap && !blk.seg->name.empty() && segW > 24) {
+            ImU32 textCol = IsLightColor(blk.seg->color)
+                ? IM_COL32(20, 20, 20, 240) : IM_COL32(255, 255, 255, 230);
+
+            ImVec2 textSize = ImGui::CalcTextSize(blk.seg->name.c_str());
+            if (textSize.x < segW - 6) {
+                float tx = blk.startPx + (segW - textSize.x) * 0.5f;
+                DrawTextWithShadow(dl, ImVec2(tx, ty), blk.seg->name.c_str(), textCol);
+            } else {
+                std::string abbr = blk.seg->name.substr(0, std::min((size_t)5, blk.seg->name.size()));
+                ImVec2 abbrSize = ImGui::CalcTextSize(abbr.c_str());
+                if (abbrSize.x < segW - 4) {
+                    DrawTextWithShadow(dl, ImVec2(blk.startPx + 2, ty), abbr.c_str(), textCol);
+                }
+            }
+        }
+
+        // Countdown text near "now" line for active/upcoming segments
+        bool crossesNow = (blk.startMin <= nowMin && blk.endMin > nowMin);
+        bool isNextAfterNow = (!crossesNow && blk.startMin > nowMin && blk.startMin <= nowMin + 30);
+
+        if (crossesNow && !blk.seg->isGap) {
+            int remaining = blk.endMin - nowMin;
+            char cdBuf[24];
+            snprintf(cdBuf, sizeof(cdBuf), "%ddk", remaining);
+            ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
+            float nowPx = x0 + (nowMin - windowStart) * ppm;
+            float cdX = nowPx + 4;
+            if (cdX + cdSize.x < blk.endPx - 2) {
+                DrawTextWithShadow(dl, ImVec2(cdX, ty),
+                    cdBuf, IM_COL32(255, 255, 200, 220));
+            }
+        } else if (isNextAfterNow && !blk.seg->isGap) {
+            int minsUntil = blk.startMin - nowMin;
+            char cdBuf[24];
+            snprintf(cdBuf, sizeof(cdBuf), "%ddk sonra", minsUntil);
+            ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
+            if (cdSize.x < segW - 4) {
+                float tx = blk.startPx + (segW - cdSize.x) * 0.5f;
+                DrawTextWithShadow(dl, ImVec2(tx, ty), cdBuf, IM_COL32(255, 255, 200, 200));
+            }
+        } else if (crossesNow && blk.seg->isGap) {
+            // In a gap: show when next event starts
+            int remaining = blk.endMin - nowMin;
+            char cdBuf[24];
+            snprintf(cdBuf, sizeof(cdBuf), "%ddk sonra", remaining);
+            ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
+            float nowPx = x0 + (nowMin - windowStart) * ppm;
+            float cdX = nowPx + 4;
+            if (cdX + cdSize.x < blk.endPx - 2) {
+                DrawTextWithShadow(dl, ImVec2(cdX, ty), cdBuf, IM_COL32(180, 180, 180, 180));
+            }
+        }
+    }
+
     dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + barW, y0 + barH), IM_COL32(60, 70, 85, 150), 0, 0, 1.0f);
 }
 
@@ -360,9 +415,9 @@ void AddonRender() {
                 float barX = cursor.x + LABEL_WIDTH;
                 float rowY = cursor.y;
 
-                // Label
-                std::string label = ev->name;
-                if (ev->segmentFilter) label = ev->segmentFilter;
+                // Label (displayName includes LW tags)
+                std::string label = ev->displayName;
+                if (ev->segmentFilter && ev->displayName == ev->name) label = ev->segmentFilter;
                 ImVec2 labelSize = ImGui::CalcTextSize(label.c_str());
 
                 // Truncate label to fit
