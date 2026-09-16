@@ -1,6 +1,4 @@
 #include <Windows.h>
-#include <mmsystem.h>
-#pragma comment(lib, "winmm.lib")
 #include <string>
 #include <filesystem>
 #include <ctime>
@@ -22,9 +20,9 @@ void AddonRender();
 void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
-static constexpr int VER_MINOR = 4;
-static constexpr int VER_BUILD = 3;
-#define CLE_VERSION_STR "0.4.3"
+static constexpr int VER_MINOR = 5;
+static constexpr int VER_BUILD = 0;
+#define CLE_VERSION_STR "0.5.0"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -57,10 +55,11 @@ static std::vector<TrackRow> g_cachedTrackRows;
 
 // Toast system
 struct Toast {
-    std::string text;
+    std::string title;
+    std::string subtitle;
     std::string chatlink;
     float timer;
-    float maxTimer;
+    bool isStart;
 };
 static std::deque<Toast> g_toasts;
 
@@ -360,7 +359,7 @@ void AddonRender() {
         if (MumbleLink) g_currentMapId = MumbleLink->Context.MapID;
 
         // Track tick + notifications
-        auto notifications = g_trackMgr->Tick(*g_timer, now);
+        auto notifications = g_trackMgr->Tick(*g_timer, now, g_config->GetRemindMinutes());
         for (auto& n : notifications) {
             char alertBuf[256];
             if (n.started)
@@ -368,9 +367,14 @@ void AddonRender() {
             else
                 snprintf(alertBuf, sizeof(alertBuf), "%s - %d dk sonra", n.segmentName.c_str(), n.minutesUntil);
             APIDefs->GUI_SendAlert(alertBuf);
-            g_toasts.push_back({alertBuf, n.chatlink, 8.0f, 8.0f});
-            if (g_config->GetSoundEnabled())
-                PlaySound(TEXT("SystemAsterisk"), NULL, SND_ALIAS | SND_ASYNC);
+
+            Toast t;
+            t.title = n.segmentName;
+            t.subtitle = n.started ? "BASLADI!" : (std::to_string(n.minutesUntil) + " dk sonra basliyor");
+            t.chatlink = n.chatlink;
+            t.timer = 10.0f;
+            t.isStart = n.started;
+            g_toasts.push_back(std::move(t));
         }
 
         g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
@@ -379,7 +383,9 @@ void AddonRender() {
     // ========== MAIN TIMER WINDOW ==========
     if (g_showWindow) {
         PushGW2Style(g_config->GetWindowAlpha());
-        ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
+        bool panelWillShow = g_showTrackPanel && !g_cachedTrackRows.empty();
+        float minW = panelWillShow ? 660 : 450;
+        ImGui::SetNextWindowSizeConstraints(ImVec2(minW, 200), ImVec2(1200, 900));
         if (ImGui::Begin("Claymore Law Event Timer v" CLE_VERSION_STR "##CLE", &g_showWindow,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
 
@@ -406,23 +412,26 @@ void AddonRender() {
                 g_showTrackPanel = !g_showTrackPanel;
 
             // Layout: timeline left, track panel right (docked)
-            static constexpr float TRACK_PANEL_W = 200.0f;
+            static constexpr float TRACK_PANEL_W = 180.0f;
             bool showTrack = g_showTrackPanel && !g_cachedTrackRows.empty();
-            float timelineW = showTrack ? (winW - TRACK_PANEL_W - 6) : winW;
-            if (timelineW < 300) timelineW = 300;
+            float timelineW = showTrack ? (winW - TRACK_PANEL_W - 4) : winW;
+
+            // Shrink label width when panel is open to keep bar area usable
+            float labelW = showTrack ? std::min(LABEL_WIDTH, timelineW * 0.28f) : LABEL_WIDTH;
+            if (labelW < 60) labelW = 60;
 
             ImGui::BeginChild("##timeline", ImVec2(timelineW, 0), false, 0);
             dl = ImGui::GetWindowDrawList();
 
             int windowStart = g_nowMin - HALF_WINDOW;
             int windowEnd = g_nowMin + HALF_WINDOW;
-            float barW = timelineW - LABEL_WIDTH - 8;
+            float barW = timelineW - labelW - 8;
             if (barW < 100) barW = 100;
 
             ImVec2 cursor = ImGui::GetCursorScreenPos();
-            float timeHeaderX = cursor.x + LABEL_WIDTH;
+            float timeHeaderX = cursor.x + labelW;
             RenderTimeHeader(dl, timeHeaderX, cursor.y, barW, windowStart, windowEnd);
-            ImGui::Dummy(ImVec2(LABEL_WIDTH + barW, TIME_HEADER_H));
+            ImGui::Dummy(ImVec2(labelW + barW, TIME_HEADER_H));
 
             float nowLinePx = timeHeaderX + barW * 0.5f;
             float nowLineTop = cursor.y;
@@ -447,14 +456,14 @@ void AddonRender() {
                 for (auto* ev : visEvents) {
                     cursor = ImGui::GetCursorScreenPos();
                     float labelX = cursor.x;
-                    float barX = cursor.x + LABEL_WIDTH;
+                    float barX = cursor.x + labelW;
                     float rowY = cursor.y;
 
                     std::string label = ev->displayName;
                     if (ev->segmentFilter && ev->displayName == ev->name) label = ev->segmentFilter;
                     ImVec2 labelSize = ImGui::CalcTextSize(label.c_str());
-                    if (labelSize.x > LABEL_WIDTH - 8) {
-                        while (label.size() > 3 && ImGui::CalcTextSize(label.c_str()).x > LABEL_WIDTH - 12)
+                    if (labelSize.x > labelW - 8) {
+                        while (label.size() > 3 && ImGui::CalcTextSize(label.c_str()).x > labelW - 12)
                             label.pop_back();
                         label += "..";
                     }
@@ -538,7 +547,7 @@ void AddonRender() {
                 bool tracked = g_trackMgr->IsTracked(s_ctxWikiKey, s_ctxSegName);
                 if (!tracked) {
                     if (ImGui::MenuItem(("Takip et: " + s_ctxSegName).c_str())) {
-                        g_trackMgr->AddTrack(s_ctxWikiKey, s_ctxSegName, *g_timer, now);
+                        g_trackMgr->AddTrack(s_ctxWikiKey, s_ctxSegName, *g_timer, now, g_config->GetRemindMinutes());
                         g_config->SetTracked(g_trackMgr->GetPairs());
                         g_config->Save(g_configPath);
                         g_showTrackPanel = true;
@@ -633,11 +642,11 @@ void AddonRender() {
         PopGW2Style();
     }
 
-    // ========== TOASTS (always visible) ==========
+    // ========== TOASTS (always visible, styled) ==========
     if (!g_toasts.empty()) {
         ImGuiIO& io = ImGui::GetIO();
         float dt = io.DeltaTime;
-        float toastW = 300;
+        float toastW = 280;
         float yOffset = 60;
 
         for (size_t i = 0; i < g_toasts.size(); ++i) {
@@ -645,34 +654,74 @@ void AddonRender() {
             t.timer -= dt;
             if (t.timer <= 0) continue;
 
-            float alpha = (t.timer < 1.5f) ? (t.timer / 1.5f) : 1.0f;
-            ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - toastW - 20, yOffset));
+            float alpha = (t.timer < 2.0f) ? (t.timer / 2.0f) : 1.0f;
+            // Slide in from right
+            float slideIn = (t.timer > 9.0f) ? ((t.timer - 9.0f) * toastW) : 0;
+            float xPos = io.DisplaySize.x - toastW - 16 + slideIn;
+
+            ImGui::SetNextWindowPos(ImVec2(xPos, yOffset));
             ImGui::SetNextWindowSize(ImVec2(toastW, 0));
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.10f, 0.14f, 0.92f * alpha));
-            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.93f, 0.91f, 0.67f, 0.5f * alpha));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
 
             char toastId[32];
             snprintf(toastId, sizeof(toastId), "##cle_toast_%zu", i);
             ImGui::Begin(toastId, nullptr,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize
-                | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
-            ImGui::TextColored(ImVec4(0.93f, 0.91f, 0.67f, alpha), "%s", t.text.c_str());
+                | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove
+                | ImGuiWindowFlags_NoScrollbar);
+
+            ImVec2 wPos = ImGui::GetWindowPos();
+            ImDrawList* tdl = ImGui::GetWindowDrawList();
+            float contentH = 48;
+
+            // Background
+            tdl->AddRectFilled(
+                ImVec2(wPos.x, wPos.y),
+                ImVec2(wPos.x + toastW, wPos.y + contentH),
+                IM_COL32(18, 22, 30, (int)(230 * alpha)), 3.0f);
+
+            // Left color bar (green=started, gold=upcoming)
+            ImU32 barCol = t.isStart
+                ? IM_COL32(80, 220, 80, (int)(255 * alpha))
+                : IM_COL32(238, 210, 100, (int)(255 * alpha));
+            tdl->AddRectFilled(
+                ImVec2(wPos.x, wPos.y),
+                ImVec2(wPos.x + 4, wPos.y + contentH),
+                barCol, 3.0f, ImDrawCornerFlags_Left);
+
+            // Title
+            ImVec4 titleCol = t.isStart
+                ? ImVec4(0.35f, 0.92f, 0.35f, alpha)
+                : ImVec4(0.93f, 0.88f, 0.55f, alpha);
+            ImGui::SetCursorPos(ImVec2(12, 6));
+            ImGui::TextColored(titleCol, "%s", t.title.c_str());
+
+            // Subtitle
+            ImGui::SetCursorPos(ImVec2(12, 24));
+            ImGui::TextColored(ImVec4(0.65f, 0.68f, 0.72f, alpha), "%s", t.subtitle.c_str());
+
+            // WP button
             if (!t.chatlink.empty()) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton("WP")) ImGui::SetClipboardText(t.chatlink.c_str());
+                ImGui::SetCursorPos(ImVec2(toastW - 36, 12));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.3f, 0.5f, 0.7f * alpha));
+                if (ImGui::SmallButton("WP"))
+                    ImGui::SetClipboardText(t.chatlink.c_str());
+                ImGui::PopStyleColor();
             }
-            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+
+            // Click to dismiss
+            ImGui::SetCursorPos(ImVec2(0, 0));
+            if (ImGui::InvisibleButton(("##dismiss" + std::to_string(i)).c_str(), ImVec2(toastW - 40, contentH)))
                 t.timer = 0;
-            float toastH = ImGui::GetWindowSize().y;
             ImGui::End();
-            ImGui::PopStyleColor(2);
-            ImGui::PopStyleVar(2);
-            yOffset += toastH + 4;
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar(3);
+            yOffset += contentH + 6;
         }
 
-        // Remove all expired
         g_toasts.erase(std::remove_if(g_toasts.begin(), g_toasts.end(),
             [](const Toast& t) { return t.timer <= 0; }), g_toasts.end());
     }
@@ -700,9 +749,16 @@ void AddonOptions() {
         g_config->Save(g_configPath);
     }
 
-    bool sound = g_config->GetSoundEnabled();
-    if (ImGui::Checkbox("Bildirim sesi", &sound)) {
-        g_config->SetSoundEnabled(sound);
+    ImGui::Text("Bildirim suresi:");
+    ImGui::SameLine();
+    static const char* remindOpts[] = {"5 dk", "10 dk", "15 dk", "20 dk"};
+    static const int remindVals[] = {5, 10, 15, 20};
+    int curRemind = g_config->GetRemindMinutes();
+    int sel = 1;
+    for (int i = 0; i < 4; ++i) if (remindVals[i] == curRemind) sel = i;
+    ImGui::SetNextItemWidth(80);
+    if (ImGui::Combo("##remind", &sel, remindOpts, 4)) {
+        g_config->SetRemindMinutes(remindVals[sel]);
         g_config->Save(g_configPath);
     }
 

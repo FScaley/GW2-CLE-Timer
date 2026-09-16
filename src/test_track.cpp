@@ -151,6 +151,48 @@ int main() {
     }
     printf("\n");
 
+    // TEST 6: LoadPairs cascade suppression
+    printf("TEST 6: LoadPairs cascade suppression\n");
+    {
+        TrackManager tm;
+        std::vector<std::pair<std::string,std::string>> pairs = {{"core-hwb", "Tequatl the Sunless"}};
+        tm.LoadPairs(pairs);
+        time_t t1 = MakeUTC(2026, 9, 16, 2, 55, 0);
+        auto n1 = tm.Tick(engine, t1);
+        CHECK(n1.size() <= 1, "at most 1 notification after LoadPairs (not 3 cascade)");
+        if (!n1.empty()) printf("  -> threshold=%d\n", n1[0].threshold);
+    }
+    printf("\n");
+
+    // TEST 7: Tick jump (02:45 -> 03:00)
+    printf("TEST 7: Tick jump\n");
+    {
+        TrackManager tm;
+        tm.AddTrack("core-hwb", "Tequatl the Sunless", engine, MakeUTC(2026,9,16,2,30,0));
+        time_t t1 = MakeUTC(2026, 9, 16, 2, 45, 0);
+        tm.Tick(engine, t1);
+        time_t t2 = MakeUTC(2026, 9, 16, 3, 0, 0);
+        auto n2 = tm.Tick(engine, t2);
+        CHECK(n2.size() == 1, "exactly 1 notification on jump");
+        if (!n2.empty()) CHECK(n2[0].threshold == 0, "threshold 0");
+    }
+    printf("\n");
+
+    // TEST 8: Custom 15dk threshold
+    printf("TEST 8: Custom 15dk threshold\n");
+    {
+        TrackManager tm;
+        tm.AddTrack("core-hwb", "Tequatl the Sunless", engine, MakeUTC(2026,9,16,2,30,0), 15);
+        time_t t1 = MakeUTC(2026, 9, 16, 2, 48, 0);
+        auto n1 = tm.Tick(engine, t1, 15);
+        CHECK(n1.size() == 1, "fires within 15dk window");
+        if (!n1.empty()) {
+            CHECK(n1[0].threshold == 15, "threshold is 15");
+            printf("  -> threshold=%d, minutesUntil=%d\n", n1[0].threshold, n1[0].minutesUntil);
+        }
+    }
+    printf("\n");
+
     printf("=== Results: %d passed, %d failed ===\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;
 }

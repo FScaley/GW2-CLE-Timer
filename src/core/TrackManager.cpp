@@ -41,7 +41,7 @@ time_t TrackManager::ComputeOccurrenceStart(const TimerEngine& engine, const Tra
 }
 
 void TrackManager::AddTrack(const std::string& wikiKey, const std::string& segmentName,
-                             const TimerEngine& engine, time_t utcNow) {
+                             const TimerEngine& engine, time_t utcNow, int remindMinutes) {
     if (IsTracked(wikiKey, segmentName)) return;
 
     struct tm utcTm;
@@ -64,10 +64,11 @@ void TrackManager::AddTrack(const std::string& wikiKey, const std::string& segme
             bool isInSeg = (pi.segment && pi.segment->id == segId);
             int minsUntil = isInSeg ? 0 : engine.MinutesUntilSegment(*ev, segId, nowMin);
 
+            int addThresholds[3] = {remindMinutes, std::min(2, remindMinutes), 0};
             time_t occStart = ComputeOccurrenceStart(engine, te, utcNow, nowMin);
             if (occStart > 0) {
                 for (int i = 0; i < 3; ++i) {
-                    if (minsUntil <= THRESHOLDS[i])
+                    if (minsUntil <= addThresholds[i])
                         te.reminders[i].lastFiredOccStart = occStart;
                 }
             }
@@ -92,7 +93,7 @@ bool TrackManager::IsTracked(const std::string& wikiKey, const std::string& segm
     return false;
 }
 
-std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t utcNow) {
+std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t utcNow, int remindMinutes) {
     struct tm utcTm;
 #ifdef _WIN32
     gmtime_s(&utcTm, &utcNow);
@@ -100,10 +101,10 @@ std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t u
     gmtime_r(&utcNow, &utcTm);
 #endif
     int nowMin = utcTm.tm_hour * 60 + utcTm.tm_min;
+    int thresholds[3] = {remindMinutes, std::min(2, remindMinutes), 0};
 
     std::vector<Notification> result;
 
-    // First tick after LoadPairs: suppress all current thresholds
     if (m_needsSuppression) {
         m_needsSuppression = false;
         for (auto& te : m_tracked) {
@@ -117,7 +118,7 @@ std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t u
             time_t occ = ComputeOccurrenceStart(engine, te, utcNow, nowMin);
             if (occ > 0) {
                 for (int i = 0; i < 3; ++i) {
-                    if (mu <= THRESHOLDS[i])
+                    if (mu <= thresholds[i])
                         te.reminders[i].lastFiredOccStart = occ;
                 }
             }
@@ -142,22 +143,20 @@ std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t u
         for (auto& seg : ev->segments)
             if (seg.id == segId) { chatlink = seg.chatlink; break; }
 
-        // Fire only the tightest satisfied threshold, mark all looser ones as fired
         int firedIdx = -1;
         for (int i = 0; i < 3; ++i) {
-            if (minsUntil <= THRESHOLDS[i] && te.reminders[i].lastFiredOccStart != occStart) {
+            if (minsUntil <= thresholds[i] && te.reminders[i].lastFiredOccStart != occStart) {
                 firedIdx = i;
             }
         }
         if (firedIdx >= 0) {
-            // Mark all thresholds >= firedIdx as fired
             for (int j = 0; j <= firedIdx; ++j)
                 te.reminders[j].lastFiredOccStart = occStart;
 
             Notification n;
             n.segmentName = te.segmentName;
             n.chatlink = chatlink;
-            n.threshold = THRESHOLDS[firedIdx];
+            n.threshold = thresholds[firedIdx];
             n.minutesUntil = minsUntil;
             n.started = (minsUntil == 0 && isInSeg);
             result.push_back(std::move(n));

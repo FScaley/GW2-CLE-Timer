@@ -35,18 +35,18 @@ struct TrackRow {
 class TrackManager {
 public:
     void AddTrack(const std::string& wikiKey, const std::string& segmentName,
-                  const TimerEngine& engine, time_t utcNow);
+                  const TimerEngine& engine, time_t utcNow, int remindMinutes = 10);
     void RemoveTrack(const std::string& wikiKey, const std::string& segmentName);
     bool IsTracked(const std::string& wikiKey, const std::string& segmentName) const;
     bool IsEmpty() const { return m_tracked.empty(); }
 
-    std::vector<Notification> Tick(const TimerEngine& engine, time_t utcNow);
+    std::vector<Notification> Tick(const TimerEngine& engine, time_t utcNow, int remindMinutes = 10);
     std::vector<TrackRow> GetTrackList(const TimerEngine& engine, int nowMin) const;
 
     std::vector<std::pair<std::string,std::string>> GetPairs() const;
     void LoadPairs(const std::vector<std::pair<std::string,std::string>>& pairs);
 
-    static constexpr int THRESHOLDS[3] = {10, 2, 0};
+    static constexpr int DEFAULT_THRESHOLDS[3] = {10, 2, 0};
 
 private:
     time_t ComputeOccurrenceStart(const TimerEngine& engine, const TrackedEvent& te,
