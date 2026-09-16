@@ -24,11 +24,16 @@ enum class EventCategory : uint8_t {
     COUNT
 };
 
+struct SegColor {
+    uint8_t r = 100, g = 100, b = 100;
+};
+
 struct Segment {
     int id;
     std::string name;
     std::string chatlink;
     bool isGap;
+    SegColor color;
 };
 
 struct SeqEntry {

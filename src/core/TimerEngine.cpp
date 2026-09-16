@@ -118,6 +118,12 @@ bool TimerEngine::ParseJson(const std::string& jsonStr) {
                 s.name = seg.value("name", "");
                 s.chatlink = seg.value("chatlink", "");
                 s.isGap = s.name.empty();
+                if (seg.contains("bg") && seg["bg"].is_array() && seg["bg"].size() == 3
+                    && seg["bg"][0].is_number()) {
+                    s.color.r = seg["bg"][0].get<uint8_t>();
+                    s.color.g = seg["bg"][1].get<uint8_t>();
+                    s.color.b = seg["bg"][2].get<uint8_t>();
+                }
                 def.segments.push_back(s);
             }
         }
