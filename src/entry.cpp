@@ -124,6 +124,7 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
                                float x0, float y0, float barW, float barH,
                                int windowStart, int windowEnd, int nowMin) {
     float ppm = barW / (float)(windowEnd - windowStart);
+    const char* segFilter = ev.segmentFilter;
 
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + barW, y0 + barH), IM_COL32(25, 30, 40, 200));
 
@@ -131,6 +132,7 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
         float startPx, endPx;
         int startMin, endMin;
         const Segment* seg;
+        bool isFiltered;
     };
     std::vector<SegBlock> blocks;
 
@@ -147,9 +149,8 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
         if ((curSegId != prevSegId) || (m == windowEnd + 1)) {
             if (prevSeg && m > windowStart) {
                 float segEndPx = x0 + (m - windowStart) * ppm;
-                blocks.push_back({segStartPx, segEndPx, segStartMin, m, prevSeg});
-                segStartPx = segEndPx;
-                segStartMin = m;
+                bool filtered = segFilter && !prevSeg->isGap && prevSeg->name != segFilter;
+                blocks.push_back({segStartPx, segEndPx, segStartMin, m, prevSeg, filtered});
             }
             prevSegId = curSegId;
             prevSeg = pi.segment;
@@ -158,70 +159,59 @@ static void RenderTimelineBar(ImDrawList* dl, const EventDef& ev, const TimerEng
         }
     }
 
-    // Draw blocks
+    float nowPx = x0 + (nowMin - windowStart) * ppm;
+
     for (auto& blk : blocks) {
-        ImU32 col = blk.seg->isGap ? GapColor() : SegColorToImU32(blk.seg->color);
+        bool isGapOrFiltered = blk.seg->isGap || blk.isFiltered;
+        ImU32 col = isGapOrFiltered ? GapColor() : SegColorToImU32(blk.seg->color);
         dl->AddRectFilled(ImVec2(blk.startPx, y0 + 1), ImVec2(blk.endPx, y0 + barH - 1), col);
 
         float segW = blk.endPx - blk.startPx;
         float ty = y0 + (barH - ImGui::GetTextLineHeight()) * 0.5f;
+        bool crossesNow = (blk.startMin <= nowMin && blk.endMin > nowMin);
 
-        if (!blk.seg->isGap && !blk.seg->name.empty() && segW > 24) {
+        if (!isGapOrFiltered && !blk.seg->name.empty()) {
             ImU32 textCol = IsLightColor(blk.seg->color)
                 ? IM_COL32(20, 20, 20, 240) : IM_COL32(255, 255, 255, 230);
 
-            ImVec2 textSize = ImGui::CalcTextSize(blk.seg->name.c_str());
-            if (textSize.x < segW - 6) {
-                float tx = blk.startPx + (segW - textSize.x) * 0.5f;
-                DrawTextWithShadow(dl, ImVec2(tx, ty), blk.seg->name.c_str(), textCol);
+            if (crossesNow) {
+                int remaining = blk.endMin - nowMin;
+                char combined[128];
+                snprintf(combined, sizeof(combined), "%s  %ddk", blk.seg->name.c_str(), remaining);
+                ImVec2 combSize = ImGui::CalcTextSize(combined);
+                if (combSize.x < segW - 6) {
+                    float tx = blk.startPx + (segW - combSize.x) * 0.5f;
+                    DrawTextWithShadow(dl, ImVec2(tx, ty), combined, textCol);
+                } else {
+                    ImVec2 nameSize = ImGui::CalcTextSize(blk.seg->name.c_str());
+                    if (nameSize.x < segW - 6) {
+                        float tx = blk.startPx + (segW - nameSize.x) * 0.5f;
+                        DrawTextWithShadow(dl, ImVec2(tx, ty), blk.seg->name.c_str(), textCol);
+                    }
+                }
             } else {
-                std::string abbr = blk.seg->name.substr(0, std::min((size_t)5, blk.seg->name.size()));
-                ImVec2 abbrSize = ImGui::CalcTextSize(abbr.c_str());
-                if (abbrSize.x < segW - 4) {
-                    DrawTextWithShadow(dl, ImVec2(blk.startPx + 2, ty), abbr.c_str(), textCol);
+                ImVec2 nameSize = ImGui::CalcTextSize(blk.seg->name.c_str());
+                if (nameSize.x < segW - 6) {
+                    float tx = blk.startPx + (segW - nameSize.x) * 0.5f;
+                    DrawTextWithShadow(dl, ImVec2(tx, ty), blk.seg->name.c_str(), textCol);
                 }
             }
         }
 
-        // Countdown text near "now" line for active/upcoming segments
-        bool crossesNow = (blk.startMin <= nowMin && blk.endMin > nowMin);
-        bool isNextAfterNow = (!crossesNow && blk.startMin > nowMin && blk.startMin <= nowMin + 30);
-
-        if (crossesNow && !blk.seg->isGap) {
-            int remaining = blk.endMin - nowMin;
-            char cdBuf[24];
-            snprintf(cdBuf, sizeof(cdBuf), "%ddk", remaining);
-            ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
-            float nowPx = x0 + (nowMin - windowStart) * ppm;
-            float cdX = nowPx + 4;
-            if (cdX + cdSize.x < blk.endPx - 2) {
-                DrawTextWithShadow(dl, ImVec2(cdX, ty),
-                    cdBuf, IM_COL32(255, 255, 200, 220));
-            }
-        } else if (isNextAfterNow && !blk.seg->isGap) {
-            int minsUntil = blk.startMin - nowMin;
-            char cdBuf[24];
-            snprintf(cdBuf, sizeof(cdBuf), "%ddk sonra", minsUntil);
-            ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
-            if (cdSize.x < segW - 4) {
-                float tx = blk.startPx + (segW - cdSize.x) * 0.5f;
-                DrawTextWithShadow(dl, ImVec2(tx, ty), cdBuf, IM_COL32(255, 255, 200, 200));
-            }
-        } else if (crossesNow && blk.seg->isGap) {
-            // In a gap: show when next event starts
+        // "Xdk sonra" only in the gap that crosses now
+        if (isGapOrFiltered && crossesNow) {
             int remaining = blk.endMin - nowMin;
             char cdBuf[24];
             snprintf(cdBuf, sizeof(cdBuf), "%ddk sonra", remaining);
             ImVec2 cdSize = ImGui::CalcTextSize(cdBuf);
-            float nowPx = x0 + (nowMin - windowStart) * ppm;
             float cdX = nowPx + 4;
             if (cdX + cdSize.x < blk.endPx - 2) {
-                DrawTextWithShadow(dl, ImVec2(cdX, ty), cdBuf, IM_COL32(180, 180, 180, 180));
+                DrawTextWithShadow(dl, ImVec2(cdX, ty), cdBuf, IM_COL32(170, 175, 185, 200));
             }
         }
     }
 
-    dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + barW, y0 + barH), IM_COL32(60, 70, 85, 150), 0, 0, 1.0f);
+    dl->AddRect(ImVec2(x0, y0), ImVec2(x0 + barW, y0 + barH), IM_COL32(60, 70, 85, 120), 0, 0, 1.0f);
 }
 
 static void RenderNowLine(ImDrawList* dl, float x, float yTop, float yBottom) {
