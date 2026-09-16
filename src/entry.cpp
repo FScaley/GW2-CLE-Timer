@@ -19,8 +19,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 2;
-static constexpr int VER_BUILD = 4;
-#define CLE_VERSION_STR "0.2.4"
+static constexpr int VER_BUILD = 5;
+#define CLE_VERSION_STR "0.2.5"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -308,6 +308,12 @@ void AddonRender() {
     ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
     if (ImGui::Begin("Claymore Law Event Timer##CLE", &g_showWindow,
             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
+
+        // ESC closes the window when it has focus
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+            && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Escape))) {
+            g_showWindow = false;
+        }
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 winPos = ImGui::GetCursorScreenPos();
