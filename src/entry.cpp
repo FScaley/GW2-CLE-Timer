@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 0;
-#define CLE_VERSION_STR "0.5.0"
+static constexpr int VER_BUILD = 1;
+#define CLE_VERSION_STR "0.5.1"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -43,6 +43,8 @@ time_t g_lastUpdate = 0;
 int g_nowMin = 0;
 uint32_t g_currentMapId = 0;
 uint32_t g_lastScrollMapId = 0;
+ImVec2 g_mainWinPos = {0, 0};
+ImVec2 g_mainWinSize = {0, 0};
 
 // Context menu state
 static std::string s_ctxWikiKey;
@@ -559,17 +561,18 @@ void AddonRender() {
             RenderNowLine(dl, nowLinePx, nowLineTop, nowLineBottom);
             ImGui::EndChild();
         }
+        g_mainWinPos = ImGui::GetWindowPos();
+        g_mainWinSize = ImGui::GetWindowSize();
         ImGui::End();
         PopGW2Style();
     }
 
-    // ========== TRACK PANEL (separate overlay window, sticks to right) ==========
-    if (g_showTrackPanel && !g_cachedTrackRows.empty()) {
-        ImGuiIO& io = ImGui::GetIO();
-        float panelW = 200;
-        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - panelW - 8, 80), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(panelW, 0), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(180, 60), ImVec2(300, 500));
+    // ========== TRACK PANEL (sticks to RIGHT OUTSIDE of main window) ==========
+    if (g_showTrackPanel && !g_cachedTrackRows.empty() && g_mainWinSize.x > 0) {
+        float panelX = g_mainWinPos.x + g_mainWinSize.x;
+        float panelY = g_mainWinPos.y;
+        ImGui::SetNextWindowPos(ImVec2(panelX, panelY), ImGuiCond_Always);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(160, 60), ImVec2(300, g_mainWinSize.y));
 
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.05f, 0.07f, 0.85f));
         ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.93f, 0.91f, 0.67f, 0.15f));
