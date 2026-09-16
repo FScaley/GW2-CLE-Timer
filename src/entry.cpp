@@ -50,6 +50,10 @@ uint32_t g_lastScrollMapId = 0;
 static std::string s_ctxWikiKey;
 static std::string s_ctxSegName;
 static std::string s_ctxChatlink;
+static bool s_ctxOpen = false;
+
+// Cached track rows (updated once/sec, rendered every frame)
+static std::vector<TrackRow> g_cachedTrackRows;
 
 // Toast system
 struct Toast {
@@ -338,8 +342,12 @@ void AddonUnload() {
 }
 
 void AddonRender() {
-    if (!g_showWindow || !g_timer || !g_config) return;
+    if (!g_timer || !g_config || !g_trackMgr) return;
 
+    ImFont* f = g_font;
+    if (f) ImGui::PushFont(f);
+
+    // ========== ONCE PER SECOND: update state ==========
     time_t now = time(nullptr);
     if (now != g_lastUpdate) {
         g_lastUpdate = now;
@@ -352,246 +360,213 @@ void AddonRender() {
         g_nowMin = utcTm.tm_hour * 60 + utcTm.tm_min;
         g_timer->Update(now);
         if (MumbleLink) g_currentMapId = MumbleLink->Context.MapID;
-    }
 
-    ImFont* f = g_font;
-    if (f) ImGui::PushFont(f);
-    PushGW2Style(g_config->GetWindowAlpha());
-
-    ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
-    if (ImGui::Begin("Claymore Law Event Timer##CLE", &g_showWindow,
-            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
-
-
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        ImVec2 winPos = ImGui::GetCursorScreenPos();
-        float winW = ImGui::GetContentRegionAvail().x;
-
-        // UTC + local time header
-        char timeBuf[64];
-        snprintf(timeBuf, sizeof(timeBuf), "UTC %02d:%02d", g_nowMin / 60, g_nowMin % 60);
-        ImGui::TextColored(COL_GOLD, "%s", timeBuf);
-        if (g_config->GetShowLocalTime()) {
-            struct tm localTm;
-#ifdef _WIN32
-            localtime_s(&localTm, &now);
-#else
-            localtime_r(&now, &localTm);
-#endif
-            ImGui::SameLine();
-            snprintf(timeBuf, sizeof(timeBuf), "| Yerel %02d:%02d", localTm.tm_hour, localTm.tm_min);
-            ImGui::TextColored(COL_DIM, "%s", timeBuf);
-        }
-
-        // Begin scrollable area for timeline
-        ImGui::BeginChild("##timeline", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-        dl = ImGui::GetWindowDrawList();
-
-        int windowStart = g_nowMin - HALF_WINDOW;
-        int windowEnd = g_nowMin + HALF_WINDOW;
-        float barW = winW - LABEL_WIDTH - 8;
-        if (barW < 100) barW = 100;
-
-        // Time header
-        ImVec2 cursor = ImGui::GetCursorScreenPos();
-        float timeHeaderX = cursor.x + LABEL_WIDTH;
-        RenderTimeHeader(dl, timeHeaderX, cursor.y, barW, windowStart, windowEnd);
-        ImGui::Dummy(ImVec2(LABEL_WIDTH + barW, TIME_HEADER_H));
-
-        float nowLinePx = timeHeaderX + barW * 0.5f;
-        float nowLineTop = cursor.y;
-
-        // Event rows grouped by expansion
-        const auto& allEvents = g_timer->GetAllEvents();
-
-        // Group events by expansion
-        for (int ei = 0; ei < static_cast<int>(Expansion::COUNT); ++ei) {
-            Expansion exp = static_cast<Expansion>(ei);
-
-            // Collect visible events for this expansion
-            std::vector<const EventDef*> visEvents;
-            for (auto& ev : allEvents) {
-                if (ev.expansion != exp) continue;
-                std::string key = ev.segmentFilter
-                    ? (ev.wikiKey + "#" + ev.segmentFilter) : ev.wikiKey;
-                if (!g_config->IsEventVisible(key)) continue;
-                visEvents.push_back(&ev);
-            }
-            if (visEvents.empty()) continue;
-
-            // Expansion header
-            bool open = ImGui::CollapsingHeader(ExpansionName(exp), ImGuiTreeNodeFlags_DefaultOpen);
-            if (!open) continue;
-
-            for (auto* ev : visEvents) {
-                cursor = ImGui::GetCursorScreenPos();
-                float labelX = cursor.x;
-                float barX = cursor.x + LABEL_WIDTH;
-                float rowY = cursor.y;
-
-                // Label (displayName includes LW tags)
-                std::string label = ev->displayName;
-                if (ev->segmentFilter && ev->displayName == ev->name) label = ev->segmentFilter;
-                ImVec2 labelSize = ImGui::CalcTextSize(label.c_str());
-
-                // Truncate label to fit
-                if (labelSize.x > LABEL_WIDTH - 8) {
-                    while (label.size() > 3 && ImGui::CalcTextSize(label.c_str()).x > LABEL_WIDTH - 12)
-                        label.pop_back();
-                    label += "..";
-                }
-
-                dl->AddText(ImVec2(labelX + 4, rowY + (ROW_HEIGHT - labelSize.y) * 0.5f),
-                           IM_COL32(200, 210, 220, 230), label.c_str());
-
-                // "You are here" gold border
-                bool isCurrentMap = ev->mapId != 0 && ev->mapId == g_currentMapId;
-                if (isCurrentMap) {
-                    dl->AddRect(ImVec2(labelX, rowY - 1), ImVec2(barX + barW, rowY + ROW_HEIGHT + 1),
-                               IM_COL32(238, 232, 170, 180), 0, 0, 2.0f);
-                    // Auto-scroll once on map change
-                    if (g_currentMapId != g_lastScrollMapId) {
-                        ImGui::SetScrollHereY(0.3f);
-                        g_lastScrollMapId = g_currentMapId;
-                    }
-                }
-
-                // Timeline bar
-                RenderTimelineBar(dl, *ev, *g_timer, barX, rowY, barW, ROW_HEIGHT,
-                                  windowStart, windowEnd, g_nowMin);
-
-                // Tooltip on hover
-                ImGui::SetCursorScreenPos(ImVec2(barX, rowY));
-                ImGui::InvisibleButton(("##bar_" + ev->wikiKey +
-                    (ev->segmentFilter ? std::string("#") + ev->segmentFilter : "")).c_str(),
-                    ImVec2(barW, ROW_HEIGHT));
-
-                // Resolve hovered segment for tooltip + context menu
-                float mouseX = ImGui::GetMousePos().x;
-                float ppm = barW / (float)(windowEnd - windowStart);
-                int mouseMin = windowStart + (int)((mouseX - barX) / ppm);
-                int absMouseMin = ((mouseMin % 1440) + 1440) % 1440;
-                auto pi = g_timer->GetPhaseAt(*ev, absMouseMin);
-
-                bool isFiltered = pi.segment && ev->segmentFilter && !pi.segment->isGap
-                    && pi.segment->name != ev->segmentFilter;
-                int segStartMin = pi.segment ? (mouseMin - pi.elapsedInPhase) : 0;
-                int segEndMin = pi.segment ? (segStartMin + pi.phaseDuration) : 0;
-                bool isPast = segEndMin <= g_nowMin;
-                bool isCurrent = segStartMin <= g_nowMin && segEndMin > g_nowMin;
-                bool isFuture = segStartMin > g_nowMin;
-
-                // Tooltip
-                if (ImGui::IsItemHovered() && pi.segment) {
-                    ImGui::BeginTooltip();
-                    if (!pi.segment->isGap && !isFiltered) {
-                        if (isCurrent) {
-                            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s", pi.segment->name.c_str());
-                            ImGui::Text("%d dk icinde bitiyor", segEndMin - g_nowMin);
-                        } else if (isFuture) {
-                            ImGui::TextColored(ImVec4(0.9f, 0.85f, 0.2f, 1.0f), "%s", pi.segment->name.c_str());
-                            ImGui::Text("%d dk sonra basliyor", segStartMin - g_nowMin);
-                        } else {
-                            ImGui::TextColored(COL_DIM, "%s", pi.segment->name.c_str());
-                            ImGui::Text("Bitti");
-                        }
-                    } else {
-                        ImGui::TextColored(COL_DIM, "Bos alan");
-                    }
-                    if (pi.segment && !pi.segment->chatlink.empty() && !isFiltered && !isPast) {
-                        ImGui::Spacing();
-                        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", pi.segment->chatlink.c_str());
-                    }
-                    ImGui::EndTooltip();
-                }
-
-                // Left click: copy chatlink
-                if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && pi.segment
-                    && !pi.segment->chatlink.empty() && !isFiltered)
-                    ImGui::SetClipboardText(pi.segment->chatlink.c_str());
-
-                // Right click: context menu
-                if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && pi.segment
-                    && !pi.segment->isGap && !isFiltered) {
-                    s_ctxWikiKey = ev->wikiKey;
-                    s_ctxSegName = pi.segment->name;
-                    s_ctxChatlink = pi.segment->chatlink;
-                    ImGui::OpenPopup("##cle_ctx");
-                }
-
-                if (ImGui::BeginPopup("##cle_ctx")) {
-                    bool tracked = g_trackMgr->IsTracked(s_ctxWikiKey, s_ctxSegName);
-                    if (!tracked) {
-                        std::string menuLabel = "Takip et: " + s_ctxSegName;
-                        if (ImGui::MenuItem(menuLabel.c_str())) {
-                            g_trackMgr->AddTrack(s_ctxWikiKey, s_ctxSegName, *g_timer, now);
-                            g_config->SetTracked(g_trackMgr->GetPairs());
-                            g_config->Save(g_configPath);
-                            g_showTrackPanel = true;
-                        }
-                    } else {
-                        std::string menuLabel = "Takipten cikar: " + s_ctxSegName;
-                        if (ImGui::MenuItem(menuLabel.c_str())) {
-                            g_trackMgr->RemoveTrack(s_ctxWikiKey, s_ctxSegName);
-                            g_config->SetTracked(g_trackMgr->GetPairs());
-                            g_config->Save(g_configPath);
-                        }
-                    }
-                    if (!s_ctxChatlink.empty() && ImGui::MenuItem("Waypoint kopyala")) {
-                        ImGui::SetClipboardText(s_ctxChatlink.c_str());
-                    }
-                    ImGui::EndPopup();
-                }
-
-                ImGui::SetCursorScreenPos(ImVec2(cursor.x, rowY + ROW_HEIGHT + 1));
-            }
-        }
-
-        float nowLineBottom = ImGui::GetCursorScreenPos().y;
-
-        // Now line (drawn last, on top of everything)
-        RenderNowLine(dl, nowLinePx, nowLineTop, nowLineBottom);
-
-        ImGui::EndChild();
-    }
-    ImGui::End();
-
-    // --- Track tick: fire notifications ---
-    if (g_trackMgr && g_timer) {
+        // Track tick + notifications
         auto notifications = g_trackMgr->Tick(*g_timer, now);
         for (auto& n : notifications) {
-            // Nexus native alert
             char alertBuf[256];
-            if (n.started) {
+            if (n.started)
                 snprintf(alertBuf, sizeof(alertBuf), "%s BASLADI!", n.segmentName.c_str());
-            } else {
-                snprintf(alertBuf, sizeof(alertBuf), "%s - %d dk sonra",
-                    n.segmentName.c_str(), n.minutesUntil);
-            }
+            else
+                snprintf(alertBuf, sizeof(alertBuf), "%s - %d dk sonra", n.segmentName.c_str(), n.minutesUntil);
             APIDefs->GUI_SendAlert(alertBuf);
-
-            // Own toast
-            Toast t;
-            t.text = alertBuf;
-            t.chatlink = n.chatlink;
-            t.timer = 8.0f;
-            t.maxTimer = 8.0f;
-            g_toasts.push_back(std::move(t));
-
-            // Sound
-            if (g_config->GetSoundEnabled()) {
+            g_toasts.push_back({alertBuf, n.chatlink, 8.0f, 8.0f});
+            if (g_config->GetSoundEnabled())
                 PlaySound(TEXT("SystemAsterisk"), NULL, SND_ALIAS | SND_ASYNC);
-            }
         }
+
+        g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
     }
 
-    // --- Track Panel (right side) ---
-    if (g_showTrackPanel && g_trackMgr && g_timer && !g_trackMgr->IsEmpty()) {
+    // ========== MAIN TIMER WINDOW ==========
+    if (g_showWindow) {
+        PushGW2Style(g_config->GetWindowAlpha());
+        ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
+        if (ImGui::Begin("Claymore Law Event Timer##CLE", &g_showWindow,
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            float winW = ImGui::GetContentRegionAvail().x;
+
+            // Time header + Takip toggle
+            char timeBuf[64];
+            snprintf(timeBuf, sizeof(timeBuf), "UTC %02d:%02d", g_nowMin / 60, g_nowMin % 60);
+            ImGui::TextColored(COL_GOLD, "%s", timeBuf);
+            if (g_config->GetShowLocalTime()) {
+                struct tm localTm;
+#ifdef _WIN32
+                localtime_s(&localTm, &now);
+#else
+                localtime_r(&now, &localTm);
+#endif
+                ImGui::SameLine();
+                snprintf(timeBuf, sizeof(timeBuf), "| Yerel %02d:%02d", localTm.tm_hour, localTm.tm_min);
+                ImGui::TextColored(COL_DIM, "%s", timeBuf);
+            }
+            ImGui::SameLine(winW - 50);
+            if (ImGui::SmallButton(g_showTrackPanel ? "Takip<<" : "Takip>>"))
+                g_showTrackPanel = !g_showTrackPanel;
+
+            // Timeline child
+            ImGui::BeginChild("##timeline", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+            dl = ImGui::GetWindowDrawList();
+
+            int windowStart = g_nowMin - HALF_WINDOW;
+            int windowEnd = g_nowMin + HALF_WINDOW;
+            float barW = winW - LABEL_WIDTH - 8;
+            if (barW < 100) barW = 100;
+
+            ImVec2 cursor = ImGui::GetCursorScreenPos();
+            float timeHeaderX = cursor.x + LABEL_WIDTH;
+            RenderTimeHeader(dl, timeHeaderX, cursor.y, barW, windowStart, windowEnd);
+            ImGui::Dummy(ImVec2(LABEL_WIDTH + barW, TIME_HEADER_H));
+
+            float nowLinePx = timeHeaderX + barW * 0.5f;
+            float nowLineTop = cursor.y;
+
+            const auto& allEvents = g_timer->GetAllEvents();
+
+            for (int ei = 0; ei < static_cast<int>(Expansion::COUNT); ++ei) {
+                Expansion exp = static_cast<Expansion>(ei);
+                std::vector<const EventDef*> visEvents;
+                for (auto& ev : allEvents) {
+                    if (ev.expansion != exp) continue;
+                    std::string key = ev.segmentFilter
+                        ? (ev.wikiKey + "#" + ev.segmentFilter) : ev.wikiKey;
+                    if (!g_config->IsEventVisible(key)) continue;
+                    visEvents.push_back(&ev);
+                }
+                if (visEvents.empty()) continue;
+
+                if (!ImGui::CollapsingHeader(ExpansionName(exp), ImGuiTreeNodeFlags_DefaultOpen))
+                    continue;
+
+                for (auto* ev : visEvents) {
+                    cursor = ImGui::GetCursorScreenPos();
+                    float labelX = cursor.x;
+                    float barX = cursor.x + LABEL_WIDTH;
+                    float rowY = cursor.y;
+
+                    std::string label = ev->displayName;
+                    if (ev->segmentFilter && ev->displayName == ev->name) label = ev->segmentFilter;
+                    ImVec2 labelSize = ImGui::CalcTextSize(label.c_str());
+                    if (labelSize.x > LABEL_WIDTH - 8) {
+                        while (label.size() > 3 && ImGui::CalcTextSize(label.c_str()).x > LABEL_WIDTH - 12)
+                            label.pop_back();
+                        label += "..";
+                    }
+                    dl->AddText(ImVec2(labelX + 4, rowY + (ROW_HEIGHT - labelSize.y) * 0.5f),
+                               IM_COL32(200, 210, 220, 230), label.c_str());
+
+                    bool isCurrentMap = ev->mapId != 0 && ev->mapId == g_currentMapId;
+                    if (isCurrentMap) {
+                        dl->AddRect(ImVec2(labelX, rowY - 1), ImVec2(barX + barW, rowY + ROW_HEIGHT + 1),
+                                   IM_COL32(238, 232, 170, 180), 0, 0, 2.0f);
+                        if (g_currentMapId != g_lastScrollMapId) {
+                            ImGui::SetScrollHereY(0.3f);
+                            g_lastScrollMapId = g_currentMapId;
+                        }
+                    }
+
+                    RenderTimelineBar(dl, *ev, *g_timer, barX, rowY, barW, ROW_HEIGHT,
+                                      windowStart, windowEnd, g_nowMin);
+
+                    ImGui::SetCursorScreenPos(ImVec2(barX, rowY));
+                    std::string btnId = "##bar_" + ev->wikiKey +
+                        (ev->segmentFilter ? std::string("#") + ev->segmentFilter : "");
+                    ImGui::InvisibleButton(btnId.c_str(), ImVec2(barW, ROW_HEIGHT));
+
+                    float mouseX = ImGui::GetMousePos().x;
+                    float ppm = barW / (float)(windowEnd - windowStart);
+                    int mouseMin = windowStart + (int)((mouseX - barX) / ppm);
+                    int absMouseMin = ((mouseMin % 1440) + 1440) % 1440;
+                    auto pi = g_timer->GetPhaseAt(*ev, absMouseMin);
+
+                    bool isFiltered = pi.segment && ev->segmentFilter && !pi.segment->isGap
+                        && pi.segment->name != ev->segmentFilter;
+                    int segStartMin = pi.segment ? (mouseMin - pi.elapsedInPhase) : 0;
+                    int segEndMin = pi.segment ? (segStartMin + pi.phaseDuration) : 0;
+                    bool isCurrent = segStartMin <= g_nowMin && segEndMin > g_nowMin;
+                    bool isFuture = segStartMin > g_nowMin;
+
+                    if (ImGui::IsItemHovered() && pi.segment) {
+                        ImGui::BeginTooltip();
+                        if (!pi.segment->isGap && !isFiltered) {
+                            if (isCurrent) {
+                                ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s", pi.segment->name.c_str());
+                                ImGui::Text("%d dk icinde bitiyor", segEndMin - g_nowMin);
+                            } else if (isFuture) {
+                                ImGui::TextColored(ImVec4(0.9f, 0.85f, 0.2f, 1.0f), "%s", pi.segment->name.c_str());
+                                ImGui::Text("%d dk sonra basliyor", segStartMin - g_nowMin);
+                            } else {
+                                ImGui::TextColored(COL_DIM, "%s (bitti)", pi.segment->name.c_str());
+                            }
+                        } else {
+                            ImGui::TextColored(COL_DIM, "Bos alan");
+                        }
+                        if (pi.segment && !pi.segment->chatlink.empty() && !isFiltered)
+                            ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", pi.segment->chatlink.c_str());
+                        ImGui::EndTooltip();
+                    }
+
+                    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && pi.segment
+                        && !pi.segment->chatlink.empty() && !isFiltered)
+                        ImGui::SetClipboardText(pi.segment->chatlink.c_str());
+
+                    // Right click: set context and open popup
+                    if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && pi.segment
+                        && !pi.segment->isGap && !isFiltered) {
+                        s_ctxWikiKey = ev->wikiKey;
+                        s_ctxSegName = pi.segment->name;
+                        s_ctxChatlink = pi.segment->chatlink;
+                        s_ctxOpen = true;
+                    }
+
+                    ImGui::SetCursorScreenPos(ImVec2(cursor.x, rowY + ROW_HEIGHT + 1));
+                }
+            }
+
+            // Context menu -- OUTSIDE the row loop, ONE popup
+            if (s_ctxOpen) {
+                ImGui::OpenPopup("##cle_ctx");
+                s_ctxOpen = false;
+            }
+            if (ImGui::BeginPopup("##cle_ctx")) {
+                bool tracked = g_trackMgr->IsTracked(s_ctxWikiKey, s_ctxSegName);
+                if (!tracked) {
+                    if (ImGui::MenuItem(("Takip et: " + s_ctxSegName).c_str())) {
+                        g_trackMgr->AddTrack(s_ctxWikiKey, s_ctxSegName, *g_timer, now);
+                        g_config->SetTracked(g_trackMgr->GetPairs());
+                        g_config->Save(g_configPath);
+                        g_showTrackPanel = true;
+                    }
+                } else {
+                    if (ImGui::MenuItem(("Takipten cikar: " + s_ctxSegName).c_str())) {
+                        g_trackMgr->RemoveTrack(s_ctxWikiKey, s_ctxSegName);
+                        g_config->SetTracked(g_trackMgr->GetPairs());
+                        g_config->Save(g_configPath);
+                    }
+                }
+                if (!s_ctxChatlink.empty() && ImGui::MenuItem("Waypoint kopyala"))
+                    ImGui::SetClipboardText(s_ctxChatlink.c_str());
+                ImGui::EndPopup();
+            }
+
+            float nowLineBottom = ImGui::GetCursorScreenPos().y;
+            RenderNowLine(dl, nowLinePx, nowLineTop, nowLineBottom);
+            ImGui::EndChild();
+        }
+        ImGui::End();
+        PopGW2Style();
+    }
+
+    // ========== TRACK PANEL (always renders when visible, even if timer closed) ==========
+    if (g_showTrackPanel && !g_cachedTrackRows.empty()) {
         ImGuiIO& io = ImGui::GetIO();
-        float panelW = 260;
+        float panelW = 280;
         ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - panelW - 16, 120), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(panelW, 300), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(200, 100), ImVec2(400, 600));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(220, 80), ImVec2(400, 600));
 
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.07f, 0.09f, g_config->GetWindowAlpha()));
         ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.93f, 0.91f, 0.67f, 0.25f));
@@ -599,10 +574,8 @@ void AddonRender() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
 
         if (ImGui::Begin("Takip##CLE_TRACK", &g_showTrackPanel, ImGuiWindowFlags_NoCollapse)) {
-            auto rows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
-
-            for (size_t i = 0; i < rows.size(); ++i) {
-                auto& row = rows[i];
+            for (size_t i = 0; i < g_cachedTrackRows.size(); ++i) {
+                auto& row = g_cachedTrackRows[i];
                 ImGui::PushID(static_cast<int>(i));
 
                 ImVec4 nameCol = row.isActive
@@ -611,47 +584,48 @@ void AddonRender() {
                         ? ImVec4(1.0f, 0.85f, 0.2f, 1.0f)
                         : ImVec4(0.85f, 0.87f, 0.90f, 1.0f));
 
+                // Name
                 ImGui::TextColored(nameCol, "%s", row.displayName.c_str());
 
-                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 80);
-                if (row.isActive) {
-                    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "AKTIF");
-                } else {
-                    char cdBuf[32];
-                    int h = row.minutesUntilStart / 60;
-                    int m = row.minutesUntilStart % 60;
+                // Countdown (right-aligned)
+                char cdBuf[32];
+                if (row.isActive) snprintf(cdBuf, sizeof(cdBuf), "AKTIF");
+                else {
+                    int h = row.minutesUntilStart / 60, m = row.minutesUntilStart % 60;
                     if (h > 0) snprintf(cdBuf, sizeof(cdBuf), "%ds %02ddk", h, m);
                     else snprintf(cdBuf, sizeof(cdBuf), "%ddk", m);
-                    ImGui::TextColored(nameCol, "%s", cdBuf);
                 }
+                float cdW = ImGui::CalcTextSize(cdBuf).x;
+                float btnW = ImGui::CalcTextSize("WP").x + ImGui::CalcTextSize("X").x + 30;
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - cdW - btnW);
+                ImGui::TextColored(nameCol, "%s", cdBuf);
 
-                // WP copy button
                 if (!row.chatlink.empty()) {
                     ImGui::SameLine();
-                    if (ImGui::SmallButton("WP")) {
+                    if (ImGui::SmallButton("WP"))
                         ImGui::SetClipboardText(row.chatlink.c_str());
-                    }
                 }
-
-                // Remove button
                 ImGui::SameLine();
-                if (ImGui::SmallButton("\xc3\x97")) { // ×
+                if (ImGui::SmallButton("X")) {
                     g_trackMgr->RemoveTrack(row.track->wikiKey, row.track->segmentName);
                     g_config->SetTracked(g_trackMgr->GetPairs());
                     g_config->Save(g_configPath);
+                    g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
                     ImGui::PopID();
                     break;
                 }
-
                 ImGui::PopID();
             }
+
+            if (g_cachedTrackRows.empty())
+                ImGui::TextColored(COL_DIM, "Zaman cubugunda sag tik\n-> Takip et");
         }
         ImGui::End();
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(2);
     }
 
-    // --- Toast notifications (top-right, always visible) ---
+    // ========== TOASTS (always visible) ==========
     if (!g_toasts.empty()) {
         ImGuiIO& io = ImGui::GetIO();
         float dt = io.DeltaTime;
@@ -664,7 +638,6 @@ void AddonRender() {
             if (t.timer <= 0) continue;
 
             float alpha = (t.timer < 1.5f) ? (t.timer / 1.5f) : 1.0f;
-
             ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - toastW - 20, yOffset));
             ImGui::SetNextWindowSize(ImVec2(toastW, 0));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
@@ -674,38 +647,28 @@ void AddonRender() {
 
             char toastId[32];
             snprintf(toastId, sizeof(toastId), "##cle_toast_%zu", i);
-
             ImGui::Begin(toastId, nullptr,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize
                 | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
-
             ImGui::TextColored(ImVec4(0.93f, 0.91f, 0.67f, alpha), "%s", t.text.c_str());
-
             if (!t.chatlink.empty()) {
                 ImGui::SameLine();
-                if (ImGui::SmallButton("WP")) {
-                    ImGui::SetClipboardText(t.chatlink.c_str());
-                }
+                if (ImGui::SmallButton("WP")) ImGui::SetClipboardText(t.chatlink.c_str());
             }
-
-            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 t.timer = 0;
-            }
-
             float toastH = ImGui::GetWindowSize().y;
             ImGui::End();
             ImGui::PopStyleColor(2);
             ImGui::PopStyleVar(2);
-
             yOffset += toastH + 4;
         }
 
-        // Remove expired toasts
-        while (!g_toasts.empty() && g_toasts.front().timer <= 0)
-            g_toasts.pop_front();
+        // Remove all expired
+        g_toasts.erase(std::remove_if(g_toasts.begin(), g_toasts.end(),
+            [](const Toast& t) { return t.timer <= 0; }), g_toasts.end());
     }
 
-    PopGW2Style();
     if (f) ImGui::PopFont();
 }
 

@@ -103,6 +103,27 @@ std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t u
 
     std::vector<Notification> result;
 
+    // First tick after LoadPairs: suppress all current thresholds
+    if (m_needsSuppression) {
+        m_needsSuppression = false;
+        for (auto& te : m_tracked) {
+            auto* ev = FindEventDef(engine, te.wikiKey);
+            if (!ev) continue;
+            int segId = FindSegmentId(engine, te);
+            if (segId < 0) continue;
+            auto pi = engine.GetPhaseAt(*ev, nowMin);
+            bool isInSeg = (pi.segment && pi.segment->id == segId);
+            int mu = isInSeg ? 0 : engine.MinutesUntilSegment(*ev, segId, nowMin);
+            time_t occ = ComputeOccurrenceStart(engine, te, utcNow, nowMin);
+            if (occ > 0) {
+                for (int i = 0; i < 3; ++i) {
+                    if (mu <= THRESHOLDS[i])
+                        te.reminders[i].lastFiredOccStart = occ;
+                }
+            }
+        }
+    }
+
     for (auto& te : m_tracked) {
         auto* ev = FindEventDef(engine, te.wikiKey);
         if (!ev) continue;
@@ -121,17 +142,25 @@ std::vector<Notification> TrackManager::Tick(const TimerEngine& engine, time_t u
         for (auto& seg : ev->segments)
             if (seg.id == segId) { chatlink = seg.chatlink; break; }
 
+        // Fire only the tightest satisfied threshold, mark all looser ones as fired
+        int firedIdx = -1;
         for (int i = 0; i < 3; ++i) {
             if (minsUntil <= THRESHOLDS[i] && te.reminders[i].lastFiredOccStart != occStart) {
-                te.reminders[i].lastFiredOccStart = occStart;
-                Notification n;
-                n.segmentName = te.segmentName;
-                n.chatlink = chatlink;
-                n.threshold = THRESHOLDS[i];
-                n.minutesUntil = minsUntil;
-                n.started = (minsUntil == 0 && isInSeg);
-                result.push_back(std::move(n));
+                firedIdx = i;
             }
+        }
+        if (firedIdx >= 0) {
+            // Mark all thresholds >= firedIdx as fired
+            for (int j = 0; j <= firedIdx; ++j)
+                te.reminders[j].lastFiredOccStart = occStart;
+
+            Notification n;
+            n.segmentName = te.segmentName;
+            n.chatlink = chatlink;
+            n.threshold = THRESHOLDS[firedIdx];
+            n.minutesUntil = minsUntil;
+            n.started = (minsUntil == 0 && isInSeg);
+            result.push_back(std::move(n));
         }
     }
 
@@ -178,6 +207,7 @@ std::vector<std::pair<std::string,std::string>> TrackManager::GetPairs() const {
 
 void TrackManager::LoadPairs(const std::vector<std::pair<std::string,std::string>>& pairs) {
     m_tracked.clear();
+    m_needsSuppression = true;
     for (auto& [k, s] : pairs) {
         TrackedEvent te;
         te.wikiKey = k;

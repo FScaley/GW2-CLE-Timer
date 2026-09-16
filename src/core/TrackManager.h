@@ -55,4 +55,5 @@ private:
     const EventDef* FindEventDef(const TimerEngine& engine, const std::string& wikiKey) const;
 
     std::vector<TrackedEvent> m_tracked;
+    bool m_needsSuppression = false;
 };
