@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 5;
-#define CLE_VERSION_STR "0.5.5"
+static constexpr int VER_BUILD = 6;
+#define CLE_VERSION_STR "0.5.6"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -371,8 +371,6 @@ void AddonRender() {
                 snprintf(alertBuf, sizeof(alertBuf), "%s BASLADI!", n.segmentName.c_str());
             else
                 snprintf(alertBuf, sizeof(alertBuf), "%s - %d dk sonra", n.segmentName.c_str(), n.minutesUntil);
-            APIDefs->GUI_SendAlert(alertBuf);
-
             Toast t;
             t.title = n.segmentName;
             t.subtitle = n.started ? "BASLADI!" : (std::to_string(n.minutesUntil) + " dk sonra basliyor");
