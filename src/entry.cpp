@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 6;
-#define CLE_VERSION_STR "0.5.6"
+static constexpr int VER_BUILD = 7;
+#define CLE_VERSION_STR "0.5.7"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -597,7 +597,7 @@ void AddonRender() {
     }
 
     // ========== TRACK PANEL (sticks to RIGHT OUTSIDE of main window) ==========
-    if (g_showTrackPanel && !g_cachedTrackRows.empty() && g_mainWinSize.x > 0) {
+    if (g_showWindow && g_showTrackPanel && !g_cachedTrackRows.empty() && g_mainWinSize.x > 0) {
         float panelX = g_mainWinPos.x + g_mainWinSize.x;
         float panelY = g_mainWinPos.y;
         ImGui::SetNextWindowPos(ImVec2(panelX, panelY), ImGuiCond_Always);
