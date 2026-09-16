@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 1;
-#define CLE_VERSION_STR "0.5.1"
+static constexpr int VER_BUILD = 2;
+#define CLE_VERSION_STR "0.5.2"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -644,9 +644,9 @@ void AddonRender() {
     if (!g_toasts.empty()) {
         ImGuiIO& io = ImGui::GetIO();
         float dt = io.DeltaTime;
-        float toastW = 260;
-        float cardH = 52;
-        float yOffset = 50;
+        float toastW = 380;
+        float cardH = 72;
+        float yOffset = 40;
 
         for (size_t i = 0; i < g_toasts.size(); ++i) {
             auto& t = g_toasts[i];
@@ -654,10 +654,10 @@ void AddonRender() {
             if (t.timer <= 0) continue;
 
             float alpha = (t.timer < 2.0f) ? (t.timer / 2.0f) : 1.0f;
-            float slideIn = (t.timer > 9.0f) ? ((t.timer - 9.0f) * toastW) : 0;
-            float xPos = io.DisplaySize.x - toastW - 12 + slideIn;
+            float slideUp = (t.timer > 9.0f) ? ((t.timer - 9.0f) * 60.0f) : 0;
+            float xPos = (io.DisplaySize.x - toastW) * 0.5f;
 
-            ImGui::SetNextWindowPos(ImVec2(xPos, yOffset));
+            ImGui::SetNextWindowPos(ImVec2(xPos, yOffset - slideUp));
             ImGui::SetNextWindowSize(ImVec2(toastW, cardH));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -679,8 +679,8 @@ void AddonRender() {
                 IM_COL32(22, 26, 36, (int)(235 * alpha)), 4.0f);
 
             // Circular icon (Blish HUD style)
-            float iconR = 18;
-            float iconCX = wPos.x + 28, iconCY = wPos.y + cardH * 0.5f;
+            float iconR = 26;
+            float iconCX = wPos.x + 38, iconCY = wPos.y + cardH * 0.5f;
             ImU32 ringCol = t.isStart
                 ? IM_COL32(60, 200, 60, (int)(255 * alpha))
                 : IM_COL32(220, 190, 60, (int)(255 * alpha));
@@ -698,15 +698,15 @@ void AddonRender() {
             }
 
             // Event name
-            float textX = wPos.x + 54;
+            float textX = wPos.x + 74;
             ImVec4 titleCol = t.isStart
                 ? ImVec4(0.85f, 1.0f, 0.85f, alpha)
                 : ImVec4(0.95f, 0.93f, 0.88f, alpha);
-            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + 8));
+            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + 14));
             ImGui::TextColored(titleCol, "%s", t.title.c_str());
 
             // "Starts in X minutes" / "BASLADI!"
-            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + 26));
+            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + 38));
             ImVec4 subCol = t.isStart
                 ? ImVec4(0.4f, 0.85f, 0.4f, alpha * 0.9f)
                 : ImVec4(0.6f, 0.6f, 0.55f, alpha * 0.9f);
