@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 2;
-#define CLE_VERSION_STR "0.5.2"
+static constexpr int VER_BUILD = 3;
+#define CLE_VERSION_STR "0.5.3"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -601,8 +601,11 @@ void AddonRender() {
                 ImGui::Dummy(ImVec2(14, 0));
                 ImGui::SameLine();
 
-                // Name + countdown on same line
+                // Name
                 ImGui::TextColored(nameCol, "%s", row.displayName.c_str());
+
+                // Countdown
+                ImGui::SameLine();
                 char cdBuf[32];
                 if (row.isActive) snprintf(cdBuf, sizeof(cdBuf), "AKTIF");
                 else {
@@ -610,26 +613,29 @@ void AddonRender() {
                     if (h > 0) snprintf(cdBuf, sizeof(cdBuf), "%ds%02dd", h, m);
                     else snprintf(cdBuf, sizeof(cdBuf), "%ddk", m);
                 }
-                ImGui::SameLine();
                 ImGui::TextColored(COL_DIM, "%s", cdBuf);
 
-                // Right-click to remove
-                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                // X button (right side, same line)
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - 16);
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.5f, 0.15f, 0.15f, 0.7f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.3f, 0.3f, 1.0f));
+                if (ImGui::SmallButton("x")) {
                     g_trackMgr->RemoveTrack(row.track->wikiKey, row.track->segmentName);
                     g_config->SetTracked(g_trackMgr->GetPairs());
                     g_config->Save(g_configPath);
                     g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
+                    ImGui::PopStyleColor(3);
                     ImGui::PopID();
                     break;
                 }
-                if (ImGui::IsItemHovered()) {
+                ImGui::PopStyleColor(3);
+
+                // WP copy on click
+                if (ImGui::IsItemHovered() && !row.chatlink.empty()) {
                     ImGui::BeginTooltip();
-                    if (!row.chatlink.empty())
-                        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
-                    ImGui::TextColored(COL_DIM, "Sol tik: WP kopyala | Sag tik: kaldir");
+                    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
                     ImGui::EndTooltip();
-                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !row.chatlink.empty())
-                        ImGui::SetClipboardText(row.chatlink.c_str());
                 }
 
                 ImGui::PopID();
@@ -678,27 +684,15 @@ void AddonRender() {
             tdl->AddRectFilled(ImVec2(wPos.x, wPos.y), ImVec2(wPos.x + toastW, wPos.y + cardH),
                 IM_COL32(22, 26, 36, (int)(235 * alpha)), 4.0f);
 
-            // Circular icon (Blish HUD style)
-            float iconR = 26;
-            float iconCX = wPos.x + 38, iconCY = wPos.y + cardH * 0.5f;
-            ImU32 ringCol = t.isStart
-                ? IM_COL32(60, 200, 60, (int)(255 * alpha))
-                : IM_COL32(220, 190, 60, (int)(255 * alpha));
-            tdl->AddCircleFilled(ImVec2(iconCX, iconCY), iconR, IM_COL32(30, 35, 48, (int)(220 * alpha)), 24);
-            tdl->AddCircle(ImVec2(iconCX, iconCY), iconR, ringCol, 24, 2.5f);
-            tdl->AddCircle(ImVec2(iconCX, iconCY), iconR + 2,
-                IM_COL32(80, 75, 55, (int)(100 * alpha)), 24, 1.0f);
-
-            // First letter in circle
-            if (!t.title.empty()) {
-                char ltr[2] = {t.title[0], 0};
-                ImVec2 ls = ImGui::CalcTextSize(ltr);
-                tdl->AddText(ImVec2(iconCX - ls.x * 0.5f, iconCY - ls.y * 0.5f),
-                    IM_COL32(255, 255, 255, (int)(220 * alpha)), ltr);
-            }
+            // Left color bar (thick, like GW2 UI accent)
+            ImU32 barCol = t.isStart
+                ? IM_COL32(60, 210, 60, (int)(255 * alpha))
+                : IM_COL32(230, 200, 60, (int)(255 * alpha));
+            tdl->AddRectFilled(ImVec2(wPos.x, wPos.y), ImVec2(wPos.x + 5, wPos.y + cardH),
+                barCol, 4.0f, ImDrawCornerFlags_Left);
 
             // Event name
-            float textX = wPos.x + 74;
+            float textX = wPos.x + 16;
             ImVec4 titleCol = t.isStart
                 ? ImVec4(0.85f, 1.0f, 0.85f, alpha)
                 : ImVec4(0.95f, 0.93f, 0.88f, alpha);
