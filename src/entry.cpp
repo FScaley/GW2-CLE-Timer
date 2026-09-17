@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 7;
-#define CLE_VERSION_STR "0.5.7"
+static constexpr int VER_BUILD = 8;
+#define CLE_VERSION_STR "0.5.8"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -387,34 +387,12 @@ void AddonRender() {
     if (g_showWindow) {
         PushGW2Style(g_config->GetWindowAlpha());
 
-        // Calculate content height for auto-fit
-        const auto& allEventsForSize = g_timer->GetAllEvents();
-        int totalVisRows = 0, visGroups = 0;
-        for (int ei = 0; ei < static_cast<int>(Expansion::COUNT); ++ei) {
-            int count = 0;
-            for (auto& ev : allEventsForSize) {
-                if (static_cast<int>(ev.expansion) != ei) continue;
-                std::string key = ev.segmentFilter
-                    ? (ev.wikiKey + "#" + ev.segmentFilter) : ev.wikiKey;
-                if (g_config->IsEventVisible(key)) count++;
-            }
-            if (count > 0) { visGroups++; totalVisRows += count; }
-        }
-        float autoH = TIME_HEADER_H + 36
-            + visGroups * (GROUP_HEADER_H + 4)
-            + totalVisRows * (ROW_HEIGHT + 1)
-            + 16;
-        ImGuiIO& sizeIO = ImGui::GetIO();
-        float maxH = sizeIO.DisplaySize.y * 0.85f;
-        if (autoH > maxH) autoH = maxH;
-        if (autoH < 200) autoH = 200;
-
-        // Restore saved position; auto-fit height
-        if (g_config->GetWinX() >= 0 && g_config->GetWinY() >= 0)
+        // Restore saved position/size
+        if (g_config->GetWinW() > 0 && g_config->GetWinH() > 0) {
             ImGui::SetNextWindowPos(ImVec2(g_config->GetWinX(), g_config->GetWinY()), ImGuiCond_FirstUseEver);
-        float savedW = g_config->GetWinW() > 0 ? g_config->GetWinW() : 700;
-        ImGui::SetNextWindowSize(ImVec2(savedW, autoH), ImGuiCond_Always);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(450, 150), ImVec2(1200, maxH));
+            ImGui::SetNextWindowSize(ImVec2(g_config->GetWinW(), g_config->GetWinH()), ImGuiCond_FirstUseEver);
+        }
+        ImGui::SetNextWindowSizeConstraints(ImVec2(450, 200), ImVec2(1200, 900));
         if (ImGui::Begin("Claymore Law Event Timer v" CLE_VERSION_STR "##CLE", &g_showWindow,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
 
