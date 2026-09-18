@@ -1,6 +1,7 @@
 #include "ConfigManager.h"
 #include "../../include/json.hpp"
 #include <fstream>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -21,6 +22,9 @@ bool ConfigManager::Load(const std::string& path) {
     m_showLocalTime = root.value("show_local_time", true);
     m_windowAlpha = root.value("window_alpha", 0.88f);
     m_remindMinutes = root.value("remind_minutes", 10);
+    m_toastPos = std::clamp(root.value("toast_pos", 1), 0, 7);
+    m_toastAlpha = std::clamp(root.value("toast_alpha", 0.92f), 0.3f, 1.0f);
+    m_toastDuration = std::clamp(root.value("toast_duration", 10.0f), 3.0f, 20.0f);
     m_winX = root.value("win_x", -1.0f);
     m_winY = root.value("win_y", -1.0f);
     m_winW = root.value("win_w", -1.0f);
@@ -46,6 +50,9 @@ bool ConfigManager::Save(const std::string& path) const {
     root["show_local_time"] = m_showLocalTime;
     root["window_alpha"] = m_windowAlpha;
     root["remind_minutes"] = m_remindMinutes;
+    root["toast_pos"] = m_toastPos;
+    root["toast_alpha"] = m_toastAlpha;
+    root["toast_duration"] = m_toastDuration;
     root["win_x"] = m_winX;
     root["win_y"] = m_winY;
     root["win_w"] = m_winW;

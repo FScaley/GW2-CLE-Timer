@@ -27,6 +27,15 @@ public:
     int GetRemindMinutes() const { return m_remindMinutes; }
     void SetRemindMinutes(int v) { m_remindMinutes = v; }
 
+    int GetToastPos() const { return m_toastPos; }
+    void SetToastPos(int v) { m_toastPos = v; }
+
+    float GetToastAlpha() const { return m_toastAlpha; }
+    void SetToastAlpha(float v) { m_toastAlpha = v; }
+
+    float GetToastDuration() const { return m_toastDuration; }
+    void SetToastDuration(float v) { m_toastDuration = v; }
+
     const std::vector<std::pair<std::string,std::string>>& GetTracked() const { return m_tracked; }
     void SetTracked(const std::vector<std::pair<std::string,std::string>>& t) { m_tracked = t; }
 
@@ -36,5 +45,8 @@ private:
     bool m_showLocalTime = true;
     int m_remindMinutes = 10;
     float m_windowAlpha = 0.88f;
+    int m_toastPos = 1;
+    float m_toastAlpha = 0.92f;
+    float m_toastDuration = 10.0f;
     float m_winX = -1, m_winY = -1, m_winW = -1, m_winH = -1;
 };

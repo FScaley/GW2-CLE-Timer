@@ -20,9 +20,9 @@ void AddonRender();
 void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
-static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 11;
-#define CLE_VERSION_STR "0.5.11"
+static constexpr int VER_MINOR = 6;
+static constexpr int VER_BUILD = 0;
+#define CLE_VERSION_STR "0.6.0"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -55,15 +55,34 @@ static bool s_ctxOpen = false;
 // Cached track rows (updated once/sec, rendered every frame)
 static std::vector<TrackRow> g_cachedTrackRows;
 
-// Toast system
-struct Toast {
-    std::string title;
-    std::string subtitle;
+// Toast system — coalesced cards
+struct ToastRow {
+    std::string name;
     std::string chatlink;
-    float timer;
-    bool isStart;
+    int minutesUntil;
 };
-static std::deque<Toast> g_toasts;
+struct ToastCard {
+    bool isStart;
+    float timer;
+    std::vector<ToastRow> rows;
+};
+static std::deque<ToastCard> g_toasts;
+
+static void PushToastRow(bool isStart, ToastRow row) {
+    float dur = g_config ? g_config->GetToastDuration() : 10.0f;
+    for (auto& card : g_toasts) {
+        if (card.isStart == isStart && card.timer > 0) {
+            card.rows.push_back(std::move(row));
+            card.timer = std::max(card.timer, dur - 1.0f);
+            return;
+        }
+    }
+    ToastCard card;
+    card.isStart = isStart;
+    card.timer = dur;
+    card.rows.push_back(std::move(row));
+    g_toasts.push_back(std::move(card));
+}
 
 static const char* QA_ID = "QA_CLE_TIMER";
 static const char* KB_ID = "KB_CLE_TOGGLE";
@@ -363,21 +382,10 @@ void AddonRender() {
         g_timer->Update(now);
         if (MumbleLink) g_currentMapId = MumbleLink->Context.MapID;
 
-        // Track tick + notifications
+        // Track tick + notifications (coalesced into cards)
         auto notifications = g_trackMgr->Tick(*g_timer, now, g_config->GetRemindMinutes());
         for (auto& n : notifications) {
-            char alertBuf[256];
-            if (n.started)
-                snprintf(alertBuf, sizeof(alertBuf), "%s BASLADI!", n.segmentName.c_str());
-            else
-                snprintf(alertBuf, sizeof(alertBuf), "%s - %d dk sonra", n.segmentName.c_str(), n.minutesUntil);
-            Toast t;
-            t.title = n.segmentName;
-            t.subtitle = n.started ? "BASLADI!" : (std::to_string(n.minutesUntil) + " dk sonra basliyor");
-            t.chatlink = n.chatlink;
-            t.timer = 10.0f;
-            t.isStart = n.started;
-            g_toasts.push_back(std::move(t));
+            PushToastRow(n.started, {n.segmentName, n.chatlink, n.minutesUntil});
         }
 
         g_cachedTrackRows = g_trackMgr->GetTrackList(*g_timer, g_nowMin);
@@ -655,33 +663,62 @@ void AddonRender() {
         ImGui::PopStyleColor(2);
     }
 
-    // ========== NOTIFICATIONS (Blish HUD Event Table style) ==========
+    // ========== NOTIFICATIONS (coalesced toast cards) ==========
     if (!g_toasts.empty()) {
         ImGuiIO& io = ImGui::GetIO();
         float dt = io.DeltaTime;
         float toastW = 380;
-        float cardH = 72;
-        float yOffset = 40;
+        float headerH = 30.0f;
+        float rowH = 24.0f;
+        float cardPad = 8.0f;
+        float cardGap = 6.0f;
+        float margin = 40.0f;
+        float duration = g_config->GetToastDuration();
+        float baseAlpha = g_config->GetToastAlpha();
+        int pos = g_config->GetToastPos();
 
-        for (size_t i = 0; i < g_toasts.size(); ++i) {
-            auto& t = g_toasts[i];
-            t.timer -= dt;
-            if (t.timer <= 0) continue;
+        // Compute total stack height for positioning
+        float totalH = 0;
+        for (auto& card : g_toasts) {
+            if (card.timer <= 0 || card.rows.empty()) continue;
+            totalH += headerH + rowH * card.rows.size() + cardPad * 2 + cardGap;
+        }
+        if (totalH > 0) totalH -= cardGap;
 
-            float alpha = (t.timer < 2.0f) ? (t.timer / 2.0f) : 1.0f;
-            float slideUp = (t.timer > 9.0f) ? ((t.timer - 9.0f) * 60.0f) : 0;
-            float xPos = (io.DisplaySize.x - toastW) * 0.5f;
+        // Position: 0=TL 1=TC 2=TR 3=ML 4=MR 5=BL 6=BC 7=BR
+        static const int hAlign[8] = {0,1,2, 0,2, 0,1,2};
+        int h = hAlign[pos < 0 || pos > 7 ? 1 : pos];
+        float xPos = h == 0 ? margin : h == 1 ? (io.DisplaySize.x - toastW) * 0.5f
+                                                : io.DisplaySize.x - margin - toastW;
+        float startY;
+        if (pos <= 2) startY = margin;
+        else if (pos <= 4) startY = (io.DisplaySize.y - totalH) * 0.5f;
+        else startY = io.DisplaySize.y - margin - totalH;
 
-            ImGui::SetNextWindowPos(ImVec2(xPos, yOffset - slideUp));
+        float yOffset = startY;
+
+        for (size_t ci = 0; ci < g_toasts.size(); ++ci) {
+            auto& card = g_toasts[ci];
+            if (card.rows.empty() || card.timer <= 0) { card.timer = 0; continue; }
+
+            // Hover pauses timer
+            bool cardHovered = false;
+            float cardH = headerH + rowH * card.rows.size() + cardPad * 2;
+
+            float fadeAlpha = (card.timer < 2.0f) ? (card.timer / 2.0f) : 1.0f;
+            float alpha = baseAlpha * fadeAlpha;
+            float slideOffset = (card.timer > duration - 1.0f)
+                ? ((card.timer - (duration - 1.0f)) * 60.0f) : 0;
+
+            ImGui::SetNextWindowPos(ImVec2(xPos, yOffset - slideOffset));
             ImGui::SetNextWindowSize(ImVec2(toastW, cardH));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
             ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
 
-            char toastId[32];
-            snprintf(toastId, sizeof(toastId), "##cle_toast_%zu", i);
-            ImGui::Begin(toastId, nullptr,
+            const char* cardId = card.isStart ? "##cle_toast_start" : "##cle_toast_upcoming";
+            ImGui::Begin(cardId, nullptr,
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
                 | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav
                 | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
@@ -691,52 +728,111 @@ void AddonRender() {
 
             // Card background
             tdl->AddRectFilled(ImVec2(wPos.x, wPos.y), ImVec2(wPos.x + toastW, wPos.y + cardH),
-                IM_COL32(22, 26, 36, (int)(235 * alpha)), 4.0f);
+                IM_COL32(22, 26, 36, (int)(255 * alpha)), 4.0f);
 
-            // Left color bar (thick, like GW2 UI accent)
-            ImU32 barCol = t.isStart
+            // Left color bar
+            ImU32 barCol = card.isStart
                 ? IM_COL32(60, 210, 60, (int)(255 * alpha))
                 : IM_COL32(230, 200, 60, (int)(255 * alpha));
             tdl->AddRectFilled(ImVec2(wPos.x, wPos.y), ImVec2(wPos.x + 5, wPos.y + cardH),
                 barCol, 4.0f, ImDrawCornerFlags_Left);
 
-            // Event name
             float textX = wPos.x + 16;
-            ImVec4 titleCol = t.isStart
-                ? ImVec4(0.85f, 1.0f, 0.85f, alpha)
-                : ImVec4(0.95f, 0.93f, 0.88f, alpha);
-            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + 14));
-            ImGui::TextColored(titleCol, "%s", t.title.c_str());
 
-            // "Starts in X minutes" / "BASLADI!"
-            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + 38));
-            ImVec4 subCol = t.isStart
-                ? ImVec4(0.4f, 0.85f, 0.4f, alpha * 0.9f)
-                : ImVec4(0.6f, 0.6f, 0.55f, alpha * 0.9f);
-            ImGui::TextColored(subCol, "%s", t.subtitle.c_str());
+            // Card header
+            ImVec4 hdrCol = card.isStart
+                ? ImVec4(0.4f, 0.85f, 0.4f, alpha)
+                : ImVec4(0.95f, 0.82f, 0.35f, alpha);
+            ImGui::SetCursorScreenPos(ImVec2(textX, wPos.y + cardPad));
+            ImGui::TextColored(hdrCol, "%s", card.isStart ? "BASLADI!" : "Yaklasan Eventler");
 
-            // Click: copy WP + dismiss
-            ImGui::SetCursorScreenPos(wPos);
-            if (ImGui::InvisibleButton(("##dismiss" + std::to_string(i)).c_str(), ImVec2(toastW, cardH))) {
-                if (!t.chatlink.empty()) ImGui::SetClipboardText(t.chatlink.c_str());
-                t.timer = 0;
+            // Header click = dismiss card
+            ImGui::SetCursorScreenPos(ImVec2(wPos.x + 5, wPos.y));
+            if (ImGui::InvisibleButton(card.isStart ? "##hdr_s" : "##hdr_u", ImVec2(toastW - 5, headerH + cardPad))) {
+                card.timer = 0;
             }
-            if (ImGui::IsItemHovered() && !t.chatlink.empty()) {
-                { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y)); }
+            if (ImGui::IsItemHovered()) {
+                cardHovered = true;
+                ImVec2 mp = io.MousePos;
+                ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y));
                 ImGui::BeginTooltip();
-                ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", t.chatlink.c_str());
-                ImGui::TextColored(COL_DIM, "Tikla: WP kopyala + kapat");
+                ImGui::TextColored(COL_DIM, "Sol tik: karti kapat");
                 ImGui::EndTooltip();
             }
+
+            // Separator line under header
+            tdl->AddLine(
+                ImVec2(wPos.x + 10, wPos.y + headerH + cardPad - 2),
+                ImVec2(wPos.x + toastW - 10, wPos.y + headerH + cardPad - 2),
+                IM_COL32(255, 255, 255, (int)(40 * alpha)));
+
+            // Per-row rendering
+            int rowToRemove = -1;
+            for (size_t ri = 0; ri < card.rows.size(); ++ri) {
+                auto& row = card.rows[ri];
+                float rowY = wPos.y + headerH + cardPad + rowH * ri;
+
+                // Row hover highlight
+                char rowBtnId[32];
+                snprintf(rowBtnId, sizeof(rowBtnId), "##tr_%zu", ri);
+                ImGui::SetCursorScreenPos(ImVec2(wPos.x + 5, rowY));
+                if (ImGui::InvisibleButton(rowBtnId, ImVec2(toastW - 5, rowH))) {
+                    if (!row.chatlink.empty()) ImGui::SetClipboardText(row.chatlink.c_str());
+                    rowToRemove = (int)ri;
+                }
+                bool rowHovered = ImGui::IsItemHovered();
+                if (rowHovered) cardHovered = true;
+
+                if (rowHovered) {
+                    tdl->AddRectFilled(
+                        ImVec2(wPos.x + 5, rowY),
+                        ImVec2(wPos.x + toastW, rowY + rowH),
+                        IM_COL32(255, 255, 255, (int)(20 * alpha)));
+                }
+
+                // Event name
+                ImVec4 nameCol = card.isStart
+                    ? ImVec4(0.85f, 1.0f, 0.85f, alpha)
+                    : ImVec4(0.95f, 0.93f, 0.88f, alpha);
+                ImGui::SetCursorScreenPos(ImVec2(textX, rowY + 3));
+                if (card.isStart) {
+                    ImGui::TextColored(nameCol, "%s", row.name.c_str());
+                } else {
+                    ImGui::TextColored(nameCol, "%s - %d dk", row.name.c_str(), row.minutesUntil);
+                }
+
+                // Tooltip with chatlink
+                if (rowHovered && !row.chatlink.empty()) {
+                    ImVec2 mp = io.MousePos;
+                    ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y));
+                    ImGui::BeginTooltip();
+                    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
+                    ImGui::TextColored(COL_DIM, "Sol tik: WP kopyala + satir kapat");
+                    ImGui::TextColored(COL_DIM, "Sag tik: karti kapat");
+                    ImGui::EndTooltip();
+                }
+            }
+
+            // Right-click anywhere on card = dismiss whole card
+            if (ImGui::IsWindowHovered()) {
+                cardHovered = true;
+                if (ImGui::IsMouseClicked(1)) card.timer = 0;
+            }
+
+            if (rowToRemove >= 0)
+                card.rows.erase(card.rows.begin() + rowToRemove);
+
+            // Hover pauses timer
+            if (!cardHovered) card.timer -= dt;
 
             ImGui::End();
             ImGui::PopStyleColor();
             ImGui::PopStyleVar(3);
-            yOffset += cardH + 4;
+            yOffset += cardH + cardGap;
         }
 
         g_toasts.erase(std::remove_if(g_toasts.begin(), g_toasts.end(),
-            [](const Toast& t) { return t.timer <= 0; }), g_toasts.end());
+            [](const ToastCard& c) { return c.timer <= 0 || c.rows.empty(); }), g_toasts.end());
     }
 
     if (f) ImGui::PopFont();
@@ -762,7 +858,7 @@ void AddonOptions() {
         g_config->Save(g_configPath);
     }
 
-    ImGui::Text("Bildirim suresi:");
+    ImGui::Text("Hatirlatma suresi (dk):");
     ImGui::SameLine();
     static const char* remindOpts[] = {"5 dk", "10 dk", "15 dk", "20 dk"};
     static const int remindVals[] = {5, 10, 15, 20};
@@ -774,6 +870,44 @@ void AddonOptions() {
         g_config->SetRemindMinutes(remindVals[sel]);
         g_config->Save(g_configPath);
     }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("Bildirim Ayarlari:");
+
+    static const char* posOpts[] = {
+        "Sol Ust", "Ust Orta", "Sag Ust",
+        "Orta Sol", "Orta Sag",
+        "Sol Alt", "Alt Orta", "Sag Alt"
+    };
+    int curPos = g_config->GetToastPos();
+    ImGui::SetNextItemWidth(140);
+    if (ImGui::Combo("Bildirim konumu", &curPos, posOpts, 8)) {
+        g_config->SetToastPos(curPos);
+        g_config->Save(g_configPath);
+    }
+
+    float tAlpha = g_config->GetToastAlpha();
+    if (ImGui::SliderFloat("Bildirim seffafligi", &tAlpha, 0.3f, 1.0f, "%.2f")) {
+        g_config->SetToastAlpha(tAlpha);
+        g_config->Save(g_configPath);
+    }
+
+    float tDur = g_config->GetToastDuration();
+    if (ImGui::SliderFloat("Gosterim suresi (sn)", &tDur, 3.0f, 20.0f, "%.0f sn")) {
+        g_config->SetToastDuration(roundf(tDur));
+        g_config->Save(g_configPath);
+    }
+
+    if (ImGui::Button("Test bildirimi")) {
+        PushToastRow(true,  {"Tequatl the Sunless", "[&BIwDAAA=]", 0});
+        PushToastRow(true,  {"Shadow Behemoth", "[&BPwAAAA=]", 0});
+        PushToastRow(false, {"Auric Basin", "[&BMYHAAA=]", 10});
+        PushToastRow(false, {"Dragon's Stand", "[&BBAIAAA=]", 5});
+        PushToastRow(false, {"Convergence", "", 2});
+    }
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "(2 kart, 5 satir)");
 
     ImGui::Spacing();
     ImGui::Separator();
