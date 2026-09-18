@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 10;
-#define CLE_VERSION_STR "0.5.10"
+static constexpr int VER_BUILD = 11;
+#define CLE_VERSION_STR "0.5.11"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -609,8 +609,16 @@ void AddonRender() {
                 ImGui::Dummy(ImVec2(14, 0));
                 ImGui::SameLine();
 
-                // Name
+                // Name (hover: WP tooltip, click: copy WP)
                 ImGui::TextColored(nameCol, "%s", row.displayName.c_str());
+                if (ImGui::IsItemHovered() && !row.chatlink.empty()) {
+                    { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y)); }
+                    ImGui::BeginTooltip();
+                    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
+                    ImGui::EndTooltip();
+                    if (ImGui::IsItemClicked())
+                        ImGui::SetClipboardText(row.chatlink.c_str());
+                }
 
                 // Countdown
                 ImGui::SameLine();
@@ -638,14 +646,6 @@ void AddonRender() {
                     break;
                 }
                 ImGui::PopStyleColor(3);
-
-                // WP copy on click
-                if (ImGui::IsItemHovered() && !row.chatlink.empty()) {
-                    { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y)); }
-                    ImGui::BeginTooltip();
-                    ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
-                    ImGui::EndTooltip();
-                }
 
                 ImGui::PopID();
             }
