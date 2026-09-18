@@ -21,8 +21,8 @@ void AddonOptions();
 
 static constexpr int VER_MAJOR = 0;
 static constexpr int VER_MINOR = 5;
-static constexpr int VER_BUILD = 9;
-#define CLE_VERSION_STR "0.5.9"
+static constexpr int VER_BUILD = 10;
+#define CLE_VERSION_STR "0.5.10"
 
 AddonDefinition_t AddonDef = {};
 HMODULE hSelf = nullptr;
@@ -502,8 +502,8 @@ void AddonRender() {
                     bool isFuture = segStartMin > g_nowMin;
 
                     if (ImGui::IsItemHovered() && pi.segment) {
+                        { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y)); }
                         ImGui::BeginTooltip();
-                        { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetWindowPos(ImVec2(mp.x + 16.0f, mp.y + 28.0f)); }
                         if (!pi.segment->isGap && !isFiltered) {
                             if (isCurrent) {
                                 ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s", pi.segment->name.c_str());
@@ -641,8 +641,8 @@ void AddonRender() {
 
                 // WP copy on click
                 if (ImGui::IsItemHovered() && !row.chatlink.empty()) {
+                    { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y)); }
                     ImGui::BeginTooltip();
-                    { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetWindowPos(ImVec2(mp.x + 16.0f, mp.y + 28.0f)); }
                     ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", row.chatlink.c_str());
                     ImGui::EndTooltip();
                 }
@@ -722,8 +722,8 @@ void AddonRender() {
                 t.timer = 0;
             }
             if (ImGui::IsItemHovered() && !t.chatlink.empty()) {
+                { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetNextWindowPos(ImVec2(mp.x + 40.0f, mp.y)); }
                 ImGui::BeginTooltip();
-                { ImVec2 mp = ImGui::GetIO().MousePos; ImGui::SetWindowPos(ImVec2(mp.x + 16.0f, mp.y + 28.0f)); }
                 ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", t.chatlink.c_str());
                 ImGui::TextColored(COL_DIM, "Tikla: WP kopyala + kapat");
                 ImGui::EndTooltip();
